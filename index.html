@@ -112,6 +112,10 @@ body{background:var(--bg);color:var(--fg);font-family:var(--display);font-size:1
 .cpanel .empty{color:var(--muted);font-size:14px;margin:0}
 .cpanel .msg{color:var(--muted);font-size:13px;margin:0}
 .disc{font-size:12px;color:var(--muted)}
+.hp{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}
+.row2 button.go:disabled{opacity:.6;cursor:wait}
+.notes li.sent .n{background:var(--line);color:var(--muted)}
+.notes .ok{color:#2e7d32;font-weight:600}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 
@@ -168,7 +172,8 @@ body{background:var(--bg);color:var(--fg);font-family:var(--display);font-size:1
     <ul class="notes" id="notes"></ul>
     <p class="empty" id="notesEmpty">No comments yet. Press <b>Comment</b>, then tap the spot it's about.</p>
     <input id="cname" type="text" placeholder="Your name" aria-label="Your name" autocomplete="name">
-    <div class="row2"><button type="button" id="cCopy">Copy text</button><a class="go" id="cSend" href="#">Send by email</a></div>
+    <input id="chp" class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <div class="row2"><button type="button" id="cCopy">Copy text</button><a class="go" id="cSend" href="#">Send by email</a><button type="button" class="go" id="cPost" hidden>Send comments</button></div>
     <p class="msg" id="cMsg" aria-live="polite">Your comments stay on this device until you send them. "Send by email" opens your email app with them written out; "Copy text" is for webmail.</p>
   </section>
 </div>
@@ -1225,10 +1230,13 @@ $('cSave').onclick = () => {
   saveNotes(); closeEditor(); openNotes(true);
 };
 function noteLink(n){ return BOOT.link(n.r, n.p.concat(n.v)); }
+const toSend = () => notes.filter(n => !n.sent);
+const POST = !!(BOOT.index && BOOT.index.send);     // this job has a send-to-the-team address (else: email app)
+let postFailed = false;
 function emailText(){
   const name = $('cname').value.trim(), ix = BOOT.index;
   const lines = ['Comments on ' + ix.job + (ix.rev ? ' (Rev ' + ix.rev + ')' : ''), name ? 'From: ' + name : '', ''];
-  for (const n of notes) lines.push(n.n + '. ' + n.room + ': ' + n.text, '   See it: ' + noteLink(n), '');
+  for (const n of toSend()) lines.push(n.n + '. ' + n.room + ': ' + n.text, '   See it: ' + noteLink(n), '');
   return lines.filter((l, i) => l || i > 1).join('\n');
 }
 function updateSend(){
@@ -1236,15 +1244,23 @@ function updateSend(){
   const subject = 'Comments: ' + ix.job + (ix.rev ? ' Rev ' + ix.rev : '');
   const a = $('cSend');
   a.href = 'mailto:' + encodeURIComponent(to).replace(/%40/g, '@') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(emailText());
-  a.setAttribute('aria-disabled', notes.length ? 'false' : 'true');
+  a.setAttribute('aria-disabled', toSend().length ? 'false' : 'true');
+  const post = POST && !postFailed;
+  $('cPost').hidden = !POST; $('cPost').disabled = !toSend().length;
+  $('cSend').hidden = $('cCopy').hidden = post;
+  $('cPost').textContent = toSend().length > 1 ? 'Send ' + toSend().length + ' comments' : 'Send comment';
 }
 function openNotes(open){
   $('cpanel').hidden = !open;
   if (!open){ updateCard(); return; }
   $('card').hidden = true;
-  $('notes').innerHTML = notes.map(n => '<li><span class="n">' + n.n + '</span><span class="t">' + esc(n.text) + '</span>' +
+  $('notes').innerHTML = notes.map(n => '<li' + (n.sent ? ' class="sent"' : '') + '><span class="n">' + n.n + '</span><span class="t">' + esc(n.text) + '</span>' +
     '<button type="button" data-del="' + n.n + '" aria-label="Delete comment ' + n.n + '">Delete</button>' +
-    '<span class="w">' + esc(n.room) + (n.room === BOOT.roomName ? '' : ' (other room)') + '</span></li>').join('');
+    '<span class="w">' + esc(n.room) + (n.room === BOOT.roomName ? '' : ' (other room)') +
+    (n.sent ? ' · <span class="ok">Sent ' + esc(n.sent) + '</span>' : '') + '</span></li>').join('');
+  if (POST && !postFailed && !$('cMsg').dataset.keep)
+    $('cMsg').textContent = toSend().length ? 'Add your name, then press Send - your comments go straight to our team.'
+      : notes.length ? 'All sent - thank you. Add more any time.' : '';
   $('notesEmpty').hidden = notes.length > 0;
   updateSend();
 }
@@ -1259,6 +1275,29 @@ $('cSend').addEventListener('click', () => {
   if (!notes.length) return;
   $('cMsg').textContent = 'Your email app should open with your comments. Once you have sent it, you can delete them here.';
 });
+// send to the team: the job's address (a Google Apps Script) emails everyone on our list and logs it
+$('cPost').onclick = async () => {
+  const list = toSend(), name = $('cname').value.trim(), ix = BOOT.index;
+  if (!list.length) return;
+  if (!name){ $('cMsg').textContent = "Please add your name, so we know who it's from."; $('cname').focus(); return; }
+  $('cPost').disabled = true; $('cPost').textContent = 'Sending…'; delete $('cMsg').dataset.keep;
+  const payload = {v: 1, id: BOOT.id, job: ix.job, rev: ix.rev || '', name, website: $('chp').value,
+                   notes: list.map(n => ({n: n.n, room: n.room, text: n.text, link: noteLink(n)}))};
+  try {
+    const r = await fetch(ix.send, {method: 'POST', body: JSON.stringify(payload)});   // text/plain: no preflight
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'not accepted');
+    const day = new Date().toLocaleDateString('en-AU', {day: 'numeric', month: 'short'});
+    list.forEach(n => { n.sent = day; }); saveNotes(); postFailed = false;
+    $('cMsg').textContent = 'Sent - thank you. ' + (list.length > 1 ? 'Your ' + list.length + ' comments are' : 'Your comment is') + ' with our team.';
+  } catch (e) {
+    postFailed = true;
+    $('cMsg').textContent = "Couldn't send just now (check your connection). Your comments are saved here - try again later, or use Send by email or Copy text.";
+  }
+  $('cMsg').dataset.keep = '1';
+  openNotes(true);
+  if (postFailed){ $('cPost').hidden = false; $('cPost').textContent = 'Try again'; $('cPost').disabled = false; }
+};
 $('cCopy').onclick = async () => {
   try { await navigator.clipboard.writeText(emailText()); $('cMsg').textContent = 'Copied. Paste it into an email to ' + (BOOT.index.email || 'us') + '.'; }
   catch (_) { $('cMsg').textContent = 'Could not copy on this browser - use Send by email instead.'; }
