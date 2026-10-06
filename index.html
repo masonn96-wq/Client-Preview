@@ -1,0 +1,1283 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>*{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}</style>
+<title>3D preview</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap">
+<style>
+/* Client Preview: a copy of the Part Finder viewer for clients - one job, unlocked with a PIN, comments by email.
+   Layout: full-height 3D stage, job strip and room tabs on top, card docked at the bottom */
+:root{
+  --bg:#eef0f1; --stage:#e3e6e8; --card:#ffffff; --fg:#1d2226; --muted:#5d666d; --line:#cdd2d6;
+  --hi:#f2600c; --hi-ink:#ffffff; --panel:#d9d4cc; --edge:#6f777d; --ghost:#9aa3a9;
+  --display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#15191c; --stage:#1b2024; --card:#22282c; --fg:#e8ecee; --muted:#9aa4ab; --line:#343c42;
+  --hi:#ff7a2e; --hi-ink:#1a0e05; --panel:#5b5852; --edge:#a7b0b6; --ghost:#58626a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#15191c; --stage:#1b2024; --card:#22282c; --fg:#e8ecee; --muted:#9aa4ab; --line:#343c42;
+  --hi:#ff7a2e; --hi-ink:#1a0e05; --panel:#5b5852; --edge:#a7b0b6; --ghost:#58626a; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--display);font-size:15px;display:flex;flex-direction:column;overflow:hidden}
+.strip{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.strip b{color:var(--fg);font-weight:600}
+#stage{flex:1;min-height:0;position:relative;background:var(--stage);touch-action:none}
+#stage canvas{display:block;width:100%;height:100%}
+.views{position:absolute;top:12px;right:12px;left:12px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.views button{font:500 13px var(--display);letter-spacing:.04em;padding:8px 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+.views button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.views button:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
+.card{background:var(--card);border-top:1px solid var(--line);padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:auto 1fr;gap:4px 16px;align-items:center}
+.tag{grid-row:span 2;background:var(--hi);color:var(--hi-ink);font:600 13px var(--mono);border-radius:6px;padding:8px 10px;text-align:center;line-height:1.1}
+.tag span{display:block;font-size:26px}
+.name{font-size:24px;font-weight:700;line-height:1.1;text-wrap:balance;min-width:0}
+.where{color:var(--muted);font-size:15px;min-width:0}
+.specs{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:8px;padding-top:10px;border-top:1px dashed var(--line);font:500 13px var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.specs b{color:var(--fg);font-weight:600}
+.card.empty .tag{background:var(--line);color:var(--muted)}
+.card{position:relative;padding-right:52px}
+.card .cx{position:absolute;top:8px;right:8px;width:36px;height:36px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--muted);font:500 20px/1 var(--display);cursor:pointer}
+.card .cx:hover{color:var(--fg)}
+.card .cx:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
+.sheet{position:absolute;left:12px;right:12px;bottom:12px;max-height:58%;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px 14px;box-shadow:0 8px 30px rgba(0,0,0,.15);z-index:2;max-width:420px;margin-left:auto}
+.sheethead{display:flex;justify-content:space-between;align-items:center;position:sticky;top:-10px;background:var(--card);padding:6px 0 8px;font-size:16px}
+.sheethead button,.sheetbtns button{font:500 13px var(--display);padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+.sheetbtns{display:flex;gap:8px;margin:4px 0 8px}
+.fin{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:15px}
+.fin .sw{width:20px;height:20px;border-radius:4px;border:1px solid var(--line);flex:none;background-size:cover}
+.fin .tl{flex:1;min-width:0}
+.fin select{font:500 13px var(--display);padding:5px 6px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);max-width:46%}
+.fin input[type=color]{width:30px;height:26px;padding:0;border:1px solid var(--line);border-radius:6px;background:none;flex:none}
+.sheet h3{margin:12px 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.tog{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer;font-size:15px}
+.tog input{width:20px;height:20px;accent-color:var(--hi);flex:none}
+.tog .tl{flex:1;min-width:0}
+.tog .ts{font:500 12px var(--mono);color:var(--muted);white-space:nowrap}
+.tog .ts b{color:var(--fg)}
+.hint{position:absolute;left:12px;bottom:10px;font-size:12px;color:var(--muted);letter-spacing:.04em}
+.tip{position:absolute;left:12px;right:12px;bottom:12px;max-width:420px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;box-shadow:0 8px 30px rgba(0,0,0,.15);z-index:1;display:grid;grid-template-columns:auto 1fr auto;gap:2px 12px;align-items:center}
+.tip .tag{grid-row:span 2;padding:6px 8px}
+.tip .tag span{font-size:20px}
+.tip .name{font-size:19px}
+.tip .where{font-size:13px}
+.tip .x{grid-row:span 2;align-self:start;font:500 13px var(--display);padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+.tip .specs{grid-column:1/-1;margin-top:6px;padding-top:8px}
+.tip .note{grid-column:1/-1;margin-top:6px;padding:6px 8px;border-radius:6px;background:var(--bg);font-size:14px;font-weight:600;border-left:3px solid var(--hi)}
+/* lock screen: the PIN opens the job (the model is stored encrypted; the link carries the other half of the key) */
+.lock{flex:1;min-height:0;overflow:auto;display:flex;align-items:center;justify-content:center;padding:24px 16px calc(24px + env(safe-area-inset-bottom,0px))}
+.lock form{width:100%;max-width:360px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px 20px;display:grid;gap:12px}
+.lock h1{margin:0;font-size:26px;line-height:1.1}
+.lock p{margin:0;color:var(--muted);font-size:15px;line-height:1.35}
+.lock input[type=text]{font:600 26px var(--mono);letter-spacing:.3em;text-align:center;padding:12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%}
+.lock input:focus-visible{outline:2px solid var(--hi);outline-offset:1px}
+.lock label{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--muted)}
+.lock label input{width:18px;height:18px;accent-color:var(--hi)}
+.lock button{font:600 16px var(--display);padding:12px;border-radius:8px;border:0;background:var(--hi);color:var(--hi-ink);cursor:pointer;min-height:44px}
+.lock button:disabled{opacity:.6;cursor:wait}
+.lock .err{color:#c0392b;font-weight:600;min-height:1.2em}
+.lock .small{font-size:12px}
+/* rooms of the job, and revision */
+.rooms{display:flex;gap:6px;overflow-x:auto;padding:8px 16px;border-bottom:1px solid var(--line);scrollbar-width:none}
+.rooms a{flex:none;font:500 14px var(--display);padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);text-decoration:none;white-space:nowrap;min-height:34px}
+.rooms a[aria-current="page"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.rooms a:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
+.strip .right{display:flex;align-items:center;gap:8px}
+.cbtn{font:600 13px var(--display);letter-spacing:.06em;text-transform:uppercase;padding:7px 12px;border-radius:6px;border:1px solid var(--hi);background:var(--hi);color:var(--hi-ink);cursor:pointer;min-height:34px}
+.cbtn.ghost{background:var(--card);color:var(--fg);border-color:var(--line)}
+.cbtn[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.cbtn:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+/* comments: write one (editor) and the list to send (panel) */
+.cedit,.cpanel{position:absolute;left:12px;right:12px;bottom:12px;max-width:440px;margin-left:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px 14px;box-shadow:0 8px 30px rgba(0,0,0,.18);z-index:4;display:grid;gap:10px}
+.cpanel{max-height:70%;overflow:auto}
+.cedit b,.cpanel .head b{font-size:17px}
+.cedit textarea,.cpanel input{font:400 16px var(--display);padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%}
+.cedit textarea{min-height:96px;resize:vertical}
+.cedit textarea:focus-visible,.cpanel input:focus-visible{outline:2px solid var(--hi);outline-offset:1px}
+.row2{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.row2 button,.row2 a{font:600 14px var(--display);padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;text-decoration:none;min-height:42px;display:inline-flex;align-items:center}
+.row2 .go{background:var(--hi);border-color:var(--hi);color:var(--hi-ink)}
+.row2 .go[aria-disabled="true"]{opacity:.5;pointer-events:none}
+.cpanel .head{display:flex;justify-content:space-between;align-items:center}
+.cpanel .head button{font:500 13px var(--display);padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+.notes{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.notes li{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:start;padding:8px 0;border-bottom:1px solid var(--line)}
+.notes .n{grid-row:span 2;background:var(--hi);color:var(--hi-ink);font:600 13px var(--mono);border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center}
+.notes .t{font-size:15px;white-space:pre-wrap;overflow-wrap:anywhere}
+.notes .w{color:var(--muted);font-size:12px;grid-column:2}
+.notes button{grid-row:span 2;font:500 12px var(--display);padding:5px 9px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer}
+.cpanel .empty{color:var(--muted);font-size:14px;margin:0}
+.cpanel .msg{color:var(--muted);font-size:13px;margin:0}
+.disc{font-size:12px;color:var(--muted)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+</head><body>
+<div class="strip"><span><b id="job">3D preview</b> <span id="rev"></span></span><span class="right" id="tools" hidden><button type="button" class="cbtn ghost" id="cList">Comments</button><button type="button" class="cbtn" id="cBtn" aria-pressed="false">Comment</button></span></div>
+<main class="lock" id="lock">
+  <form id="lockForm" autocomplete="off">
+    <h1>3D preview</h1>
+    <p id="lockMsg">Enter the PIN we sent you to open your job.</p>
+    <input id="pin" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="12" aria-label="PIN" required>
+    <label><input type="checkbox" id="remember"> Remember on this device</label>
+    <button type="submit" id="unlock">Open</button>
+    <p class="err" id="lockErr" aria-live="polite"></p>
+    <p class="small">The 3D model is a guide only: colours, textures and small details may differ. The signed drawings are what is made.</p>
+  </form>
+</main>
+<nav class="rooms" id="rooms" hidden aria-label="Rooms"></nav>
+<span id="room" hidden></span>
+<div id="stage" hidden>
+  <div class="views" role="group" aria-label="View">
+    <button id="vCab" aria-pressed="true" hidden>Cabinet</button>
+    <button id="vJob" aria-pressed="false" hidden>Whole room</button>
+    <button id="vSolid" aria-pressed="true" title="Show everything solid">Solid</button>
+    <button id="vMulti" aria-pressed="false" title="Pick several cabinets to view together">Select cabs</button>
+    <button id="vGo" hidden>Isolate</button>
+    <button id="vSee" aria-pressed="false" hidden title="See-through view">See-through</button>
+    <button id="vExplode" aria-pressed="false" hidden>Explode</button>
+    <button id="vDims" aria-pressed="false" hidden title="Show the cabinet's width, height and depth">Dims</button>
+    <button id="vPrev" hidden title="Previous cabinet">&lsaquo; Prev</button>
+    <button id="vNext" hidden title="Next cabinet">Next &rsaquo;</button>
+    <button id="vBack" hidden>Back to room</button>
+    <button id="vLayers" aria-pressed="false" title="Show or hide cabinets and try other finishes">Show / hide</button>
+  </div>
+  <div class="hint" id="hint"></div>
+  <section class="tip" id="tip" hidden aria-live="polite">
+    <div class="tag">CAB<span id="tid">–</span></div>
+    <div class="name" id="tname"></div>
+    <button type="button" class="x" id="tclose" aria-label="Close part info">Close</button>
+    <div class="where" id="twhere"></div>
+    <div class="specs" id="tspecs"></div>
+    <div class="note" id="tnote" hidden></div>
+  </section>
+  <section class="sheet" id="sheet" hidden aria-label="Show or hide">
+    <div class="sheethead"><b id="sheetTitle">Show / hide</b><button type="button" id="sheetClose" aria-label="Close">Done</button></div>
+    <div id="sheetBody"></div>
+  </section>
+  <section class="cedit" id="cedit" hidden aria-label="Write a comment">
+    <b id="ceditTitle">Comment</b>
+    <textarea id="ctext" placeholder="What would you like changed or checked here?" aria-label="Comment"></textarea>
+    <div class="row2"><button type="button" id="cCancel">Cancel</button><button type="button" class="go" id="cSave">Add comment</button></div>
+  </section>
+  <section class="cpanel" id="cpanel" hidden aria-label="Your comments">
+    <div class="head"><b>Your comments</b><button type="button" id="cpClose">Done</button></div>
+    <ul class="notes" id="notes"></ul>
+    <p class="empty" id="notesEmpty">No comments yet. Press <b>Comment</b>, then tap the spot it's about.</p>
+    <input id="cname" type="text" placeholder="Your name" aria-label="Your name" autocomplete="name">
+    <div class="row2"><button type="button" id="cCopy">Copy text</button><a class="go" id="cSend" href="#">Send by email</a></div>
+    <p class="msg" id="cMsg" aria-live="polite">Your comments stay on this device until you send them. "Send by email" opens your email app with them written out; "Copy text" is for webmail.</p>
+  </section>
+</div>
+<div class="card empty" id="card" hidden>
+  <button type="button" class="cx" id="cardClose" aria-label="Hide this panel" title="Hide">&times;</button>
+  <div class="tag"><i id="ptag" style="font-style:normal">CAB</i><span id="pid">–</span></div>
+  <div class="name" id="pname">Your 3D preview</div>
+  <div class="where" id="pwhere">Tap a door or drawer to open it. Press Comment, then tap a spot, to leave us a note.</div>
+  <div class="specs" id="pspecs"><span class="disc">A guide only: colours, textures and small details may differ. The signed drawings are what is made.</span></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ---- Client Preview: one job, opened with the link we email (#<job id>.<secret>) and a PIN sent separately ----
+// Each room's model is stored encrypted (AES-GCM, gzip inside). The key comes from the PIN and the secret in the
+// link (PBKDF2), so the files online are useless without both, and the secret (after #) never reaches a server.
+// Optional after the key: &r=<room number>  &c=<comment view: x,y,z,camera x,y,z,target x,y,z>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const KDF_ROUNDS = 200000;
+const HASH = (() => {
+  const bits = location.hash.slice(1).split('&'), m = (bits[0] || '').match(/^([a-f0-9]{8,40})\.([a-f0-9]{32,64})$/);
+  const o = {id: m && m[1], secret: m && m[2], room: 0, view: null};
+  for (const b of bits.slice(1)){
+    const [k, v] = b.split('=');
+    if (k === 'r') o.room = Math.max(0, parseInt(v, 10) || 0);
+    if (k === 'c'){ const n = decodeURIComponent(v || '').split(',').map(Number); if (n.length === 9 && n.every(Number.isFinite)) o.view = n; }
+  }
+  return o;
+})();
+const BOOT = {id: HASH.id, secret: HASH.secret, room: HASH.room, view: HASH.view, base: location.origin + location.pathname};
+BOOT.link = (room, view) => BOOT.base + '#' + BOOT.id + '.' + BOOT.secret + (room ? '&r=' + room : '') + (view ? '&c=' + view.join(',') : '');
+// another room (tab) or a comment's link opened in this tab: start again with it
+addEventListener('hashchange', () => location.reload());
+
+const hexBytes = h => new Uint8Array(h.match(/../g).map(x => parseInt(x, 16)));
+const toB64 = u => btoa(String.fromCharCode(...u));
+const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function deriveKey(pin){
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({name: 'PBKDF2', salt: hexBytes(BOOT.secret), iterations: KDF_ROUNDS, hash: 'SHA-256'}, base, 256));
+}
+// a sealed file: "CP1", 12-byte IV, AES-GCM(gzip(JSON))
+async function unseal(raw, buf){
+  const u = new Uint8Array(buf);
+  if (String.fromCharCode(u[0], u[1], u[2]) !== 'CP1') throw new Error('not a preview file');
+  const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
+  let plain;
+  try { plain = await crypto.subtle.decrypt({name: 'AES-GCM', iv: u.slice(3, 15)}, key, u.slice(15)); }
+  catch (_) { const e = new Error('wrong PIN'); e.pin = true; throw e; }
+  const stream = new Blob([plain]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return JSON.parse(await new Response(stream).text());
+}
+async function fetchFile(name){
+  const r = await fetch('p/' + BOOT.id + '/' + name, {cache: 'no-cache'});
+  if (!r.ok) throw new Error(r.status === 404 ? 'gone' : 'network');
+  return r.arrayBuffer();
+}
+const KEY_SLOT = 'cp-key-' + BOOT.id;
+function savedKey(){
+  try { const k = sessionStorage.getItem(KEY_SLOT) || localStorage.getItem(KEY_SLOT); if (k) return fromB64(k); } catch (_) {}
+  return null;
+}
+function keepKey(raw, remember){
+  try { sessionStorage.setItem(KEY_SLOT, toB64(raw)); if (remember) localStorage.setItem(KEY_SLOT, toB64(raw)); } catch (_) {}
+}
+function forgetKey(){ try { sessionStorage.removeItem(KEY_SLOT); localStorage.removeItem(KEY_SLOT); } catch (_) {} }
+
+function lockMessage(text){ $('lockMsg').textContent = text; $('pin').hidden = $('unlock').hidden = true; $('remember').parentNode.hidden = true; }
+async function openJob(raw){
+  const index = await unseal(raw, await fetchFile('index.bin'));
+  const rooms = index.rooms || [];
+  if (!rooms.length) throw new Error('empty');
+  BOOT.index = index; BOOT.room = Math.min(BOOT.room, rooms.length - 1); BOOT.roomName = rooms[BOOT.room].name;
+  $('lockErr').textContent = ''; $('unlock').textContent = 'Opening ' + BOOT.roomName + '…';
+  const job = await unseal(raw, await fetchFile(rooms[BOOT.room].file));
+  document.title = index.job + ' · ' + BOOT.roomName;
+  $('job').textContent = index.job;
+  $('rev').textContent = index.rev ? '· Rev ' + index.rev + (index.date ? ' · ' + index.date : '') : '';
+  const nav = $('rooms');
+  nav.innerHTML = rooms.map((r, i) => '<a href="' + esc(BOOT.link(i)) + '"' + (i === BOOT.room ? ' aria-current="page"' : '') + '>' + esc(r.name) + '</a>').join('');
+  nav.hidden = rooms.length < 2;
+  $('lock').hidden = true; $('stage').hidden = false; $('tools').hidden = false;
+  start(job);
+}
+(async () => {
+  if (!BOOT.id) return lockMessage('This link is incomplete. Please open it straight from the email we sent you.');
+  if (!(window.crypto && crypto.subtle && window.DecompressionStream))
+    return lockMessage('This browser is too old to open the preview. Please update it, or open the link on another device.');
+  const raw = savedKey();
+  if (raw){
+    try { return await openJob(raw); }
+    catch (e) { if (e.pin) forgetKey(); else return showError(e); }
+  }
+  $('pin').focus();
+})();
+function showError(e){
+  if (e.message === 'gone') lockMessage('This preview is no longer available. Please contact us for an updated link.');
+  else if (e.message === 'network') { $('lockErr').textContent = 'Could not load the preview - check your internet connection and try again.'; $('unlock').disabled = false; $('unlock').textContent = 'Open'; }
+  else { $('lockErr').textContent = 'Something went wrong opening the preview (' + e.message + ').'; $('unlock').disabled = false; $('unlock').textContent = 'Open'; }
+}
+$('lockForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const pin = $('pin').value.trim(); if (!pin) return;
+  $('unlock').disabled = true; $('unlock').textContent = 'Checking…'; $('lockErr').textContent = '';
+  try {
+    const raw = await deriveKey(pin);
+    await openJob(raw).then(() => keepKey(raw, $('remember').checked), e => { throw e; });
+  } catch (e) {
+    if (e.pin){ $('lockErr').textContent = "That PIN didn't open this preview. Check it and try again."; $('unlock').disabled = false; $('unlock').textContent = 'Open'; $('pin').select(); }
+    else showError(e);
+  }
+});
+// ---- the 3D view of one job ----
+function start(JOB){
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const stage = $('stage');
+// phones: Safari closes the page if it uses too much memory, so phones get a lighter canvas and textures
+const PHONE = matchMedia('(pointer: coarse)').matches || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const TEX_MAX = PHONE ? 1024 : 2048;
+// logarithmic depth: phones have far less depth precision than desktops, which made hidden parts
+// (hinges, back faces, edges) bleed through door faces. (It ignores polygonOffset, so the converter keeps
+// coplanar faces 2 mm apart instead.)
+const renderer = new THREE.WebGLRenderer({antialias:true, logarithmicDepthBuffer:true, precision:'highp', powerPreference:'low-power'});
+renderer.setPixelRatio(Math.min(devicePixelRatio, PHONE ? 1.5 : 2));
+stage.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, 1, 10, 50000);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+// gentler than three.js defaults (all 1.0, damping 0.05): slower turn/zoom/pan with a short, soft glide
+controls.dampingFactor = 0.08;
+controls.rotateSpeed = 0.55;
+controls.zoomSpeed = 0.6;
+controls.panSpeed = 0.6;
+controls.screenSpacePanning = true;
+// light mostly comes from the viewer (a lamp on the camera), so the faces you look at are the brightest and
+// thin edges / route bevels turned toward a fixed sun don't glow white
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8178, 0.5));
+const sun = new THREE.DirectionalLight(0xffffff, 0.15); sun.position.set(1500, 3000, 2500); scene.add(sun);
+const headlamp = new THREE.DirectionalLight(0xffffff, 0.6); headlamp.position.set(0.3, 0.5, 1);
+camera.add(headlamp); headlamp.target.position.set(0, 0, -1); camera.add(headlamp.target); scene.add(camera);
+
+// ---- materials (v2 files carry real CV materials + textures; v1 files get plain board colour) ----
+const loader = new THREE.TextureLoader();
+const texCache = {}, texUsers = {}, texVariants = {};
+// One GPU texture per image (plus one per different repeat). Cloning per mesh uploaded the same image
+// hundreds of times - fine on a PC, but it ran phones out of graphics memory and crashed the page.
+function textureAt(file, rx, ry){
+  const base = texture(file);
+  if (Math.abs(rx - 1) < 1e-6 && Math.abs(ry - 1) < 1e-6) return base;
+  const key = file + '|' + rx.toFixed(5) + '|' + ry.toFixed(5);
+  if (!texCache[key]){
+    const v = base.clone(); v.repeat.set(rx, ry); v.needsUpdate = true;
+    (texVariants[file] = texVariants[file] || []).push(v); texCache[key] = v;
+  }
+  return texCache[key];
+}
+function texture(file){
+  if (!texCache[file]){
+    texUsers[file] = [];
+    const t = loader.load('textures/' + encodeURIComponent(file),
+      img => {
+        // shrink big pictures (a 1500 x 2500 board photo is ~20 MB on the graphics chip) - looks the same on screen
+        const w = img.width, h = img.height, k = TEX_MAX / Math.max(w, h);
+        if (k < 1){
+          const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); t.image = c; t.needsUpdate = true;
+        }
+        (texVariants[file] || []).forEach(v => { v.image = t.image; v.needsUpdate = true; }); texUsers[file].forEach(m => { m.needsUpdate = true; }); },
+      undefined,
+      () => texUsers[file].forEach(m => { m.map = null; m.color.copy(m.userData.fallback); m.userData.base.copy(m.userData.fallback); m.needsUpdate = true; }));
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
+    if ('encoding' in t) t.encoding = THREE.sRGBEncoding;
+    texCache[file] = t;
+  }
+  return texCache[file];
+}
+const MATS = (JOB.materials || []).map(m => ({c: new THREE.Color(m.c[0], m.c[1], m.c[2]), t: m.t, s: m.s}));
+function realMaterial(mi){
+  const d = MATS[mi];
+  const mat = new THREE.MeshLambertMaterial({side:THREE.DoubleSide, transparent:true, polygonOffset:true, polygonOffsetFactor:1, polygonOffsetUnits:1});
+  if (d && d.t){
+    // v2 UVs are already in real-size repeats; v1 needs the material's tile size
+    const t = JOB.v >= 2 ? textureAt(d.t, 1, 1) : textureAt(d.t, 1 / (d.s[0] || 24), 1 / (d.s[1] || 24));
+    mat.map = t; mat.color.set(0xffffff);
+    mat.userData.fallback = d.c.clone();
+    texUsers[d.t].push(mat);
+  } else if (d) mat.color.copy(d.c);
+  else mat.color.set(0xd9d4cc);
+  mat.userData.base = mat.color.clone();
+  if (!mat.userData.fallback) mat.userData.fallback = mat.color.clone();
+  return mat;
+}
+renderer.outputEncoding = THREE.sRGBEncoding;
+
+function geo(sub){
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(sub.p, 3));
+  if (sub.u && sub.u.length) g.setAttribute('uv', new THREE.Float32BufferAttribute(sub.u, 2));
+  g.setIndex(sub.i); g.computeVertexNormals(); g.computeBoundingBox();
+  return g;
+}
+// Outline edges: an edge is drawn when only one face uses it, or its faces meet at a real angle.
+// Ignores zero-area slivers and flipped triangle winding, which otherwise draw stray diagonal lines.
+function outline(g){
+  const p = g.attributes.position.array, idx = g.index.array, edges = new Map(), out = [];
+  const A = new THREE.Vector3(), B = new THREE.Vector3(), Cv = new THREE.Vector3(), n = new THREE.Vector3();
+  const key = i => Math.round(p[i*3]) + ',' + Math.round(p[i*3+1]) + ',' + Math.round(p[i*3+2]);
+  for (let t = 0; t < idx.length; t += 3){
+    A.fromArray(p, idx[t]*3); B.fromArray(p, idx[t+1]*3); Cv.fromArray(p, idx[t+2]*3);
+    n.subVectors(B, A).cross(Cv.clone().sub(A)); const len = n.length(); if (len < 1) continue; n.divideScalar(len);
+    const v = [idx[t], idx[t+1], idx[t+2]];
+    for (let k = 0; k < 3; k++){
+      const i = v[k], j = v[(k+1) % 3], ki = key(i), kj = key(j); if (ki === kj) continue;
+      const e = ki < kj ? ki + '|' + kj : kj + '|' + ki;
+      if (!edges.has(e)) edges.set(e, {i, j, ns: []});
+      edges.get(e).ns.push(n.clone());
+    }
+  }
+  const cos = Math.cos(25 * Math.PI / 180);
+  for (const {i, j, ns} of edges.values()){
+    let draw = ns.length === 1;
+    for (let a = 0; a < ns.length && !draw; a++) for (let b = a + 1; b < ns.length; b++) if (Math.abs(ns[a].dot(ns[b])) < cos){ draw = true; break; }
+    if (draw) out.push(p[i*3], p[i*3+1], p[i*3+2], p[j*3], p[j*3+1], p[j*3+2]);
+  }
+  const eg = new THREE.BufferGeometry(); eg.setAttribute('position', new THREE.Float32BufferAttribute(out, 3)); return eg;
+}
+function makeObject(rec, isPart){
+  const subs = rec.subs || [{m: -1, p: rec.mesh.p, i: rec.mesh.i}];   // (v1 job files: one plain mesh)
+  const meshes = [], edges = [], box = new THREE.Box3();
+  for (const s of subs){
+    const g = geo(s);
+    const mesh = new THREE.Mesh(g, realMaterial(s.m));
+    mesh.userData.mi = s.m;
+    if (isPart) mesh.userData.part = rec;
+    scene.add(mesh); meshes.push(mesh); box.union(g.boundingBox);
+    if (isPart || rec.r){                 // (older job files flag drawn route outlines with r)
+      let eg;
+      if (s.e && s.e.length){ eg = new THREE.BufferGeometry(); eg.setAttribute('position', g.attributes.position); eg.setIndex(s.e); }
+      else eg = outline(g);
+      const e = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({transparent:true}));
+      e.userData.mi = s.m;
+      scene.add(e); edges.push(e); }
+  }
+  // the job file's number lists are now on the graphics chip: drop them so the phone isn't holding two copies
+  if (rec.subs) for (const s of rec.subs){ s.p = s.u = s.i = s.e = null; }
+  if (rec.mesh) rec.mesh = null;
+  return {p: rec, meshes, edges, box};
+}
+const parts = JOB.parts.map(p => makeObject(p, true));
+const hardware = JOB.context.map(c => makeObject(c, false));
+// walls: plain light grey; they fade out when the camera is behind them so they never block the view
+const jobCentre = new THREE.Box3(); parts.forEach(x => jobCentre.union(x.box));
+const JC = jobCentre.getCenter(new THREE.Vector3());
+const walls = hardware.filter(h => h.p.k === 'wall');
+for (const w of walls){
+  for (const m of w.meshes){ m.material.map = null; m.material.color.set(0xe4e1db); m.material.userData.base = m.material.color.clone(); m.material.needsUpdate = true; }
+  const s = w.box.getSize(new THREE.Vector3()), c = w.box.getCenter(new THREE.Vector3());
+  const n = s.x < s.z ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
+  if (n.dot(JC.clone().sub(c)) < 0) n.negate();          // points into the room
+  w.inward = n; w.face = c.clone().addScaledVector(n, Math.min(s.x, s.z) / 2); w.fade = 1;
+}
+function wallStep(){
+  for (const w of walls){
+    const behind = camera.position.clone().sub(w.face).dot(w.inward) < 0;
+    const want = behind ? 0.08 : 1;
+    if (Math.abs(w.fade - want) < 0.005 && w.meshes[0].material.opacity === w.fade) continue;
+    w.fade += (want - w.fade) * (still ? 1 : 0.2);
+    if (Math.abs(w.fade - want) < 0.005) w.fade = want;
+    for (const m of w.meshes){ m.material.opacity = w.fade; m.material.depthWrite = w.fade > .9; m.renderOrder = w.fade > .9 ? 0 : 3; }
+  }
+}
+const byId = new Map(parts.filter(x => x.p.id).map(x => [String(x.p.id), x]));
+// ---- doors and drawers that open ----
+const movers = (JOB.movers || []).map(m => {
+  const P = m.p ? new THREE.Vector3(m.p[0], m.p[1], m.p[2]) : new THREE.Vector3();
+  const pivot = new THREE.Object3D(); pivot.position.copy(P); scene.add(pivot);
+  const objs = m.parts.map(i => parts[i]).concat(m.ctx.map(i => hardware[i])).filter(Boolean);
+  for (const o of objs) for (const ob of o.meshes.concat(o.edges)){ scene.remove(ob); ob.position.sub(P); pivot.add(ob); }
+  const mv = {m, pivot, P, k: 0, target: 0, axis: m.d ? new THREE.Vector3(m.d[0], m.d[1], m.d[2]) : null,
+    n: new THREE.Vector3(m.n[0], m.n[1], m.n[2])};
+  for (const o of objs) o.mover = mv;
+  // pocket door carrier (Revego hinge side): slides into the pocket with the door but never turns
+  if (m.carry && m.carry.length){
+    mv.carryPivot = new THREE.Object3D(); scene.add(mv.carryPivot);
+    for (const i of m.carry){ const h = hardware[i]; if (!h) continue;
+      for (const ob of h.meshes.concat(h.edges)){ scene.remove(ob); mv.carryPivot.add(ob); } h.mover = mv; }
+  }
+  return mv;
+});
+const arms = [];                         // hinge arms, set up below
+// explode: each piece of the isolated cabinet moves away from the cabinet centre
+let ex = 0, exTarget = 0, exDirty = false;
+const ZERO = new THREE.Vector3();
+const POCKET_SECONDS = 1.25;                // a pocket door's whole move (turn, then slide in)
+const ease = t => t * t * (3 - 2 * t);
+let lastStep = performance.now();
+function moveStep(){
+  const now = performance.now(), dt = Math.min(0.1, (now - lastStep) / 1000); lastStep = now;
+  if (Math.abs(exTarget - ex) > 0.001){ ex += (exTarget - ex) * (still ? 1 : 0.12); exDirty = true; }
+  else if (ex !== exTarget){ ex = exTarget; exDirty = true; }
+  for (const mv of movers){
+    const moving = Math.abs(mv.target - mv.k) > 0.001;
+    if (moving){
+      if (mv.m.slide == null) mv.k += (mv.target - mv.k) * (still ? 1 : 0.14);
+      else {                                // pocket doors move at a steady pace, then settle
+        const step = still ? 1 : dt / POCKET_SECONDS;
+        mv.k = mv.target > mv.k ? Math.min(mv.target, mv.k + step) : Math.max(mv.target, mv.k - step);
+      }
+    }
+    mv.moved = moving;
+    if (!moving && !exDirty) continue;
+    // pocket doors (m.slide): first half of the move turns the door, second half slides it back into the pocket
+    const turn = mv.m.slide != null ? ease(Math.min(1, mv.k * 2)) : mv.k;
+    if (mv.m.t === 'door') mv.pivot.quaternion.setFromAxisAngle(mv.axis, turn * (mv.m.a != null ? mv.m.a : 110) * Math.PI / 180);
+    const off = mv.parentMv ? ZERO : (mv.front && mv.front.off) || ZERO;
+    mv.pivot.position.copy(mv.P).addScaledVector(off, ex);
+    if (mv.m.t === 'drawer') mv.pivot.position.addScaledVector(mv.n, mv.k * mv.travel);
+    if (mv.m.slide){
+      const back = ease(Math.max(0, mv.k * 2 - 1)) * mv.m.slide;
+      mv.pivot.position.addScaledVector(mv.n, -back);
+      if (mv.carryPivot) mv.carryPivot.position.copy(mv.n).multiplyScalar(-back);
+    }
+  }
+  // hinge arms: plate end stays on the cabinet, the other end follows the door's cup
+  for (const a of arms){
+    if (!a.mv.moved && !a.first) continue;
+    a.first = false;
+    const cupNow = a.cup.clone().sub(a.mv.P).applyQuaternion(a.mv.pivot.quaternion).add(a.mv.P);
+    const dir = cupNow.sub(a.plate); const len = dir.length(); if (len < 1) continue;
+    a.pivot.quaternion.setFromUnitVectors(a.dir0, dir.normalize());
+    a.pivot.scale.set(1, 1, 1); a.pivot.scale[a.ax] = Math.max(0.6, Math.min(1.8, len / a.len0));   // arm spans plate to cup
+  }
+  if (exDirty){
+    for (const x of parts.concat(hardware)){
+      if (x.mover || x.arm) continue;
+      const off = x.off || ZERO;
+      for (const ob of x.meshes.concat(x.edges)) ob.position.copy(off).multiplyScalar(ex);
+    }
+    exDirty = false;
+  }
+}
+for (const mv of movers) for (const pair of (mv.m.arms || [])){
+  const [k, cupK] = Array.isArray(pair) ? pair : [pair, -1];
+  const h = hardware[k]; if (!h) continue;
+  const size = h.box.getSize(new THREE.Vector3()), c = h.box.getCenter(new THREE.Vector3());
+  const ax = size.x >= size.y && size.x >= size.z ? 'x' : size.y >= size.z ? 'y' : 'z';
+  const e1 = c.clone(), e2 = c.clone(); e1[ax] -= size[ax] / 2; e2[ax] += size[ax] / 2;
+  // the arm's cabinet end stays put; its other end reaches for the hinge cup on the door
+  const target = cupK >= 0 && hardware[cupK] ? hardware[cupK].box.getCenter(new THREE.Vector3()) : parts[mv.m.f].box.getCenter(new THREE.Vector3());
+  const cup = e1.distanceTo(target) < e2.distanceTo(target) ? e1 : e2, plate = cup === e1 ? e2 : e1;
+  const reach = cupK >= 0 && hardware[cupK] ? target : cup;
+  const pivot = new THREE.Object3D(); pivot.position.copy(plate); scene.add(pivot);
+  for (const ob of h.meshes.concat(h.edges)){ scene.remove(ob); ob.position.sub(plate); pivot.add(ob); }
+  const a = {mv, h, pivot, plate, cup: reach, dir0: cup.clone().sub(plate).normalize(), len0: cup.distanceTo(plate), ax, first: true};
+  h.arm = a; arms.push(a);
+}
+for (const mv of movers){
+  mv.front = parts[mv.m.f]; mv.inners = [];
+  mv.covers = (mv.m.cover || []).map(k => movers[k]).filter(Boolean);
+}
+// bifold corner doors: the folding leaf rides on the swinging leaf's pivot
+for (const mv of movers) mv.kids = [];      // (a door can come before the one it hangs off)
+for (const mv of movers){
+  const par = mv.m.parent !== undefined && mv.m.parent !== null ? movers[mv.m.parent] : null;
+  if (!par) continue;
+  mv.parentMv = par; par.kids.push(mv);
+  mv.P = mv.P.clone().sub(par.P); par.pivot.add(mv.pivot); mv.pivot.position.copy(mv.P);
+}
+for (const mv of movers){
+  for (const c of mv.covers) c.inners.push(mv);
+  // inner drawer behind a drawer front: its own slide, stopping just behind the opened front
+  const outer = mv.covers.filter(c => c.m.t === 'drawer').map(c => c.m.dist);
+  mv.travel = outer.length ? Math.min(mv.m.dist, Math.min(...outer) - 20) : mv.m.dist;
+}
+// tap a door/drawer: roll-outs behind closed doors open the doors first; closing a door closes what is behind it
+function toggleMover(mv){
+  if (mv.m.fixed) return;                    // fixed blind panel: never opens
+  if (mv.parentMv) return toggleMover(mv.parentMv);
+  if (mv.covers.some(c => !c.target)){ mv.covers.forEach(c => c.target = 1); return; }
+  mv.target = mv.target ? 0 : 1;
+  mv.kids.forEach(k => { k.target = mv.target; });
+  if (!mv.target) mv.inners.forEach(i => { i.target = 0; });
+}
+
+let sel = null, view = 'cab', solid = true, iso = null, isoSolid = true, tipSel = null, dimsOn = false, dims = null;
+let selCab = null;
+let isoGs = new Set(), picking = false; const pickSet = new Set();   // isolated cabinets; cabinets being picked
+// bottom card: hidden while a cabinet is isolated or being picked, and when closed. Closing the empty
+// "Scan a part label" card is remembered on this device; a closed part / cabinet card comes back with
+// the next part or cabinet shown.
+let emptyClosed = false, infoClosed = false;
+try { emptyClosed = localStorage.getItem('cp-card-closed') === '1'; } catch (_) {}
+function cardEmpty(){ return $('card').classList.contains('empty') && !$('card').dataset.msg; }
+function updateCard(){
+  $('card').hidden = iso !== null || picking || !$('cpanel').hidden || !$('cedit').hidden || (cardEmpty() ? emptyClosed : infoClosed);
+}
+$('cardClose').onclick = () => {
+  if (cardEmpty()){ emptyClosed = true; try { localStorage.setItem('cp-card-closed', '1'); } catch (_) {} }
+  else infoClosed = true;
+  updateCard();
+};
+try { dimsOn = localStorage.getItem('cp-dims') === '1'; } catch (_) {}
+
+function setLook(x, opacity, edgeColor, edgeOpacity, tint){
+  for (const m of x.meshes){
+    const mat = m.material;
+    mat.opacity = opacity; mat.depthWrite = opacity > .9;
+    mat.color.copy(mat.userData.base);
+    mat.emissive.copy(tint || new THREE.Color(0)); mat.userData.glow = !!tint;
+    m.renderOrder = opacity > .9 ? 2 : 1;
+  }
+  for (const e of x.edges){ e.material.color.copy(edgeColor); e.material.opacity = edgeOpacity; e.material.visible = edgeOpacity > 0; }
+}
+function paint(){
+  const c = n => new THREE.Color(css(n));
+  scene.background = c('--stage');
+  const hi = c('--hi'), edge = c('--edge'), ghost = c('--ghost');
+  applyVisibility();
+  if (iso !== null){                       // isolated cabinet: solid, or see-through wireframe
+    for (const x of parts){
+      if (x === sel || x === tipSel) setLook(x, 1, hi, 1, hi);
+      else if (isoSolid) setLook(x, 1, edge, 0);
+      else setLook(x, .18, edge, .85);
+    }
+    for (const h of hardware) if (h.p.k !== 'wall') isoSolid ? setLook(h, 1, edge, 0) : setLook(h, .15, edge, .6);
+    return;
+  }
+  for (const x of parts){
+    if ((picking && pickSet.has(x.p.g)) || (!picking && selCab !== null && x.p.g === selCab)){ setLook(x, 1, hi, solid ? 0 : 1, null); for (const m of x.meshes) m.material.color.lerp(hi, picking ? .7 : .45); }
+    else if (solid) setLook(x, 1, x === sel ? hi : edge, x === sel ? 1 : 0, x === sel ? hi : null);   // solid: no outline lines
+    else if (!sel) setLook(x, 1, edge, .35);
+    else if (x === sel) setLook(x, 1, hi, 1, hi);
+    else if (x.p.g === sel.p.g) setLook(x, .3, edge, .5);
+    else setLook(x, .06, ghost, .08);
+  }
+  for (const h of hardware){
+    if (h.p.k === 'wall'){ for (const m of h.meshes) m.material.opacity = h.fade; continue; }
+    const near = sel && h.p.g === sel.p.g;
+    if (solid) setLook(h, 1, edge, 0);
+    else setLook(h, !sel ? 1 : near ? .3 : .05, edge, !sel ? .35 : near ? .4 : .05);
+  }
+}
+
+// ---- show / hide: cabinet types, materials, and single parts in an isolated cabinet ----
+const CABS = JOB.cabs || [];
+const TYPE_NAMES = {base: 'Base cabinets', upper: 'Upper / overhead cabinets', tall: 'Tall cabinets', toe: 'Toe kicks & kickers',
+  panel: 'Panels & fillers', bench: 'Benchtops & splashbacks'};
+const hiddenTypes = new Set(), hiddenMats = new Set(), hiddenParts = new Set();
+let hideHardware = false, hideWalls = false, hideRoom = false;
+const isSheet = mi => !!((JOB.materials || [])[mi] || {}).sheet;
+const matName = mi => ((JOB.materials || [])[mi] || {}).name || 'Other finishes';
+function typeOf(g){ return (CABS[g] || {}).t || 'base'; }
+// ---- finish preview: swap a sheet material (or the benchtop) for another finish ----
+const PRESETS = [['White', '#f2f1ee'], ['Light grey', '#c9c8c4'], ['Mid grey', '#8e8d89'], ['Charcoal', '#3f4042'], ['Black', '#1c1c1e'],
+  ['Sand', '#d8cbb3'], ['Sage', '#a3ad97'], ['Navy', '#2f3b52'], ['Light timber', '#c9a57a'], ['Dark timber', '#6b4a32']];
+const allObjs = () => parts.concat(hardware);
+function finishGroups(){
+  const groups = new Map();                     // label -> Set of material indexes
+  const add = (label, mi) => { if (!groups.has(label)) groups.set(label, new Set()); groups.get(label).add(mi); };
+  for (const x of parts) for (const m of x.meshes){
+    const mi = m.userData.mi;
+    if (isSheet(mi)) add(matName(mi), mi);
+    else if (typeOf(x.p.g) === 'bench' && !/tile|electrolux|appliance/i.test(matName(mi))){
+      const sz = m.geometry.boundingBox.getSize(new THREE.Vector3());
+      if (Math.min(sz.x, sz.y, sz.z) >= 18) add('Benchtop surface', mi);       // the stone / laminate top itself
+    }
+  }
+  // the benchtop finish also covers loose waterfall ends drawn with the same stone
+  const bench = groups.get('Benchtop surface');
+  if (bench){
+    const tex = new Set([...bench].map(mi => MATS[mi] && MATS[mi].t).filter(Boolean));
+    for (const h of hardware) if (h.p.k === 'panel') for (const m of h.meshes)
+      if (MATS[m.userData.mi] && tex.has(MATS[m.userData.mi].t)) bench.add(m.userData.mi);
+  }
+  return groups;
+}
+function finishOptions(){
+  // the job's own textured finishes (by the name they show in this list), then plain colours
+  const opts = [['Original', '']], seen = new Set();
+  for (const [label, idx] of finishGroups()) for (const mi of idx){
+    if (MATS[mi] && MATS[mi].t && !seen.has(label)){ seen.add(label); opts.push([label, 'tex:' + mi]); }
+  }
+  PRESETS.forEach(([n, c]) => opts.push([n, c]));
+  return opts;
+}
+const finishChoice = {};
+const FIN_KEY = 'cp-finish-' + BOOT.id + '-' + BOOT.room;
+try { Object.assign(finishChoice, JSON.parse(localStorage.getItem(FIN_KEY) || '{}')); } catch (_) {}
+function applyFinish(label, choice){
+  const idx = finishGroups().get(label); if (!idx) return;
+  for (const x of allObjs()) for (const m of x.meshes){
+    if (!idx.has(m.userData.mi)) continue;
+    const mat = m.material, ud = mat.userData;
+    if (!ud.orig) ud.orig = {map: mat.map, base: ud.base.clone()};
+    if (!choice){ mat.map = ud.orig.map; ud.base.copy(ud.orig.base); }
+    else if (choice.startsWith('tex:')){
+      const src = MATS[m.userData.mi], d = MATS[+choice.slice(4)];
+      const sx = (src && src.t ? src.s[0] : 24) / (d.s[0] || 24), sy = (src && src.t ? src.s[1] : 24) / (d.s[1] || 24);
+      const t = JOB.v >= 2 ? textureAt(d.t, sx, sy) : textureAt(d.t, 1 / (d.s[0] || 24), 1 / (d.s[1] || 24));
+      mat.map = t; texUsers[d.t].push(mat); ud.base.set(0xffffff);
+    } else { mat.map = null; ud.base.set(choice); }
+    mat.color.copy(ud.base); mat.needsUpdate = true;
+  }
+  if (choice) finishChoice[label] = choice; else delete finishChoice[label];
+  try { localStorage.setItem(FIN_KEY, JSON.stringify(finishChoice)); } catch (_) {}
+}
+function finishRow(label, opts){
+  const el = document.createElement('div'); el.className = 'fin';
+  const cur = finishChoice[label] || '';
+  const sw = document.createElement('span'); sw.className = 'sw';
+  const paintSw = v => {
+    sw.style.backgroundImage = ''; sw.style.backgroundColor = '';
+    const mi = v.startsWith('tex:') ? +v.slice(4) : [...(finishGroups().get(label) || [])][0];
+    if (!v || v.startsWith('tex:')){
+      const d = MATS[mi];
+      if (d) sw.style.backgroundColor = '#' + d.c.getHexString();          // shows if the image is missing
+      if (d && d.t) sw.style.backgroundImage = 'url("textures/' + encodeURIComponent(d.t) + '")';
+    } else sw.style.backgroundColor = v;
+  };
+  const name = document.createElement('span'); name.className = 'tl'; name.textContent = label;
+  const sel = document.createElement('select'); sel.setAttribute('aria-label', 'Finish for ' + label);
+  opts.forEach(([n, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = n; sel.appendChild(o); });
+  const custom = document.createElement('option'); custom.value = 'custom'; custom.textContent = 'Custom colour…'; sel.appendChild(custom);
+  const pick = document.createElement('input'); pick.type = 'color'; pick.setAttribute('aria-label', 'Custom colour for ' + label);
+  const isPreset = opts.some(([, v]) => v === cur);
+  sel.value = isPreset ? cur : 'custom';
+  pick.hidden = isPreset; if (!isPreset) pick.value = cur;
+  sel.onchange = () => {
+    if (sel.value === 'custom'){ pick.hidden = false; pick.click(); return; }
+    pick.hidden = true; applyFinish(label, sel.value); paintSw(sel.value); paint();
+  };
+  pick.oninput = () => { applyFinish(label, pick.value); paintSw(pick.value); paint(); };
+  paintSw(cur);
+  el.append(sw, name, sel, pick);
+  return el;
+}
+for (const [label, v] of Object.entries(finishChoice)) applyFinish(label, v);
+// ---- cabinet number badges ----
+let showNums = false;
+function cabNoOf(g){
+  if (CABS[g] && CABS[g].no) return CABS[g].no;
+  const x = parts.find(q => q.p.g === g && q.p.cabNo); return x ? x.p.cabNo : '';
+}
+function badge(text){
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  x.fillStyle = '#1f2328'; x.beginPath(); x.arc(64, 64, 58, 0, Math.PI * 2); x.fill();
+  x.lineWidth = 6; x.strokeStyle = '#ffffff'; x.stroke();
+  x.fillStyle = '#ffffff'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = '600 ' + (text.length > 2 ? 46 : 60) + 'px system-ui, sans-serif'; x.fillText(text, 64, 68);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: t, depthTest: false, depthWrite: false, sizeAttenuation: false, transparent: true}));
+  sp.scale.set(0.03, 0.03, 1); sp.renderOrder = 20; sp.visible = false;   // same size on screen at any zoom
+  return sp;
+}
+const labels = [];
+CABS.forEach((c, g) => {
+  const no = cabNoOf(g); if (!no) return;
+  const cab = parts.filter(x => x.p.g === g); if (!cab.length) return;
+  const fronts = cab.filter(x => x.mover && x.mover.front === x && !x.mover.m.inner);
+  const pos = boxOf(fronts.length ? fronts : cab).getCenter(new THREE.Vector3());
+  if (fronts.length) pos.addScaledVector(fronts[0].mover.n, 60);
+  const sp = badge(no); sp.position.copy(pos); scene.add(sp); labels.push({g, sp});
+});
+function updateLabels(){
+  for (const l of labels) l.sp.visible = iso !== null ? isoGs.has(l.g) : showNums && !hiddenTypes.has(typeOf(l.g));
+}
+function applyVisibility(){
+  for (const x of parts.concat(hardware)){
+    const isHw = !parts.includes(x);
+    const k = isHw ? (x.p.k || (x.p.g < 0 ? 'room' : 'hw')) : null;
+    let on;
+    if (iso !== null) on = isoGs.has(x.p.g) && k !== 'wall' && k !== 'room';
+    else if (k === 'wall') on = !hideWalls;
+    else if (k === 'room') on = !hideRoom;
+    else if (k === 'panel' && x.p.g < 0) on = !hiddenTypes.has('panel');
+    else on = !hiddenTypes.has(typeOf(x.p.g)) && !(k === 'hw' && hideHardware);
+    if (hiddenParts.has(x)) on = false;
+    for (const ob of x.meshes.concat(x.edges)) ob.visible = on && !(isSheet(ob.userData.mi) && hiddenMats.has(matName(ob.userData.mi)));
+  }
+  updateLabels();
+}
+const PART_NAMES = {LU:'Left end', RU:'Right end', TO:'Top', BO:'Bottom', DE:'Bottom', UB:'Back', AS:'Adjustable shelf',
+  FS:'Fixed shelf', PT:'Partition', SL:'Sleeper', FT:'Front toe', BT:'Back toe', SFT:'Kick face', BBK:'Drawer back',
+  BBT:'Drawer bottom', BFR:'Drawer box front', BSD:'Drawer side', DBAND:'Edge band', PANEL:'Panel', FILLER:'Filler', ROBT:'Roll-out bottom', ROBK:'Roll-out back', ROF:'Roll-out front'};
+function partLabel(x){
+  if (x.p.id) return x.p.name;
+  if (x.mover) return x.mover.front === x ? (x.mover.m.t === 'door' ? (x.mover.m.inner ? 'Inner door' : 'Door') : x.p.code === 'ROF' ? 'Roll-out' : 'Drawer front') : (PART_NAMES[x.p.code] || x.p.code);
+  return PART_NAMES[x.p.code] || x.p.code;
+}
+function sizeOf(x){ const s = x.box.getSize(new THREE.Vector3()); const d = [s.x, s.y, s.z].sort((a, b) => b - a); return Math.round(d[0]) + ' × ' + Math.round(d[1]); }
+function row(label, sub, on, onChange){
+  const id = 'tg' + Math.random().toString(36).slice(2, 8);
+  const el = document.createElement('label'); el.className = 'tog'; el.htmlFor = id;
+  el.innerHTML = '<input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '><span class="tl">' + esc(label) + '</span>' + (sub ? '<span class="ts">' + sub + '</span>' : '');
+  el.querySelector('input').addEventListener('change', e => { onChange(e.target.checked); applyVisibility(); });
+  return el;
+}
+function buildSheet(){
+  const body = $('sheetBody'); body.innerHTML = '';
+  const sec = t => { const h = document.createElement('h3'); h.textContent = t; body.appendChild(h); };
+  if (iso === null){
+    $('sheetTitle').textContent = 'Show / hide';
+    sec('Cabinets');
+    const counts = {}; CABS.forEach(c => counts[c.t] = (counts[c.t] || 0) + 1);
+    hardware.forEach(h => { if (h.p.k === 'panel' && h.p.g < 0) counts.panel = (counts.panel || 0) + 1; });
+    for (const t of Object.keys(TYPE_NAMES)) if (counts[t])
+      body.appendChild(row(TYPE_NAMES[t], counts[t], !hiddenTypes.has(t), on => on ? hiddenTypes.delete(t) : hiddenTypes.add(t)));
+    const mats = {}; for (const x of parts) for (const m of x.meshes) if (isSheet(m.userData.mi)) mats[matName(m.userData.mi)] = 1;
+    if (Object.keys(mats).length){
+      sec('Sheet materials');
+      Object.keys(mats).sort((a, b) => a.localeCompare(b))
+        .forEach(n => body.appendChild(row(n, '', !hiddenMats.has(n), on => on ? hiddenMats.delete(n) : hiddenMats.add(n))));
+    }
+    const groups = finishGroups();
+    if (groups.size){
+      sec('Change finishes');
+      const opts = finishOptions();
+      [...groups.keys()].sort((a, b) => (a === 'Benchtop surface') - (b === 'Benchtop surface') || a.localeCompare(b))
+        .forEach(label => body.appendChild(finishRow(label, opts)));
+      if (Object.keys(finishChoice).length){
+        const b = document.createElement('div'); b.className = 'sheetbtns';
+        b.innerHTML = '<button type="button">Reset all finishes</button>';
+        b.querySelector('button').onclick = () => { Object.keys(finishChoice).forEach(l => applyFinish(l, '')); paint(); buildSheet(); };
+        body.appendChild(b);
+      }
+    }
+    if (labels.length){
+      sec('Labels');
+      body.appendChild(row('Cabinet numbers', labels.length + ' cabinets', showNums, on => showNums = on));
+    }
+    sec('Room');
+    if (walls.length) body.appendChild(row('Walls', '', !hideWalls, on => hideWalls = !on));
+    body.appendChild(row('Floor, windows & doors', '', !hideRoom, on => hideRoom = !on));
+    body.appendChild(row('Hardware & appliances', '', !hideHardware, on => hideHardware = !on));
+  } else {
+    $('sheetTitle').textContent = 'Parts' + (isoGs.size > 1 ? ' · ' + isoGs.size + ' cabinets' : cabNoOf(iso) ? ' · Cab ' + cabNoOf(iso) : '');
+    const tagCab = x => isoGs.size > 1 && cabNoOf(x.p.g) ? '#' + cabNoOf(x.p.g) + ' ' : '';
+    const list = parts.filter(x => isoGs.has(x.p.g)).sort((a, b) => (parseInt(cabNoOf(a.p.g)) || 0) - (parseInt(cabNoOf(b.p.g)) || 0) || partLabel(a).localeCompare(partLabel(b)));
+    const all = document.createElement('div'); all.className = 'sheetbtns';
+    all.innerHTML = '<button type="button" id="showAll">Show all</button><button type="button" id="hideAll">Hide all</button>';
+    body.appendChild(all);
+    all.querySelector('#showAll').onclick = () => { list.forEach(x => hiddenParts.delete(x)); buildSheet(); applyVisibility(); };
+    all.querySelector('#hideAll').onclick = () => { list.forEach(x => hiddenParts.add(x)); buildSheet(); applyVisibility(); };
+    for (const x of list)
+      body.appendChild(row(tagCab(x) + partLabel(x), (x.p.id ? '<b>ID ' + esc(x.p.id) + '</b> · ' : '') + sizeOf(x), !hiddenParts.has(x), on => on ? hiddenParts.delete(x) : hiddenParts.add(x)));
+    const hw = hardware.filter(h => isoGs.has(h.p.g));
+    if (hw.length) body.appendChild(row('Hardware', hw.length + ' items', !hw.every(h => hiddenParts.has(h)), on => hw.forEach(h => on ? hiddenParts.delete(h) : hiddenParts.add(h))));
+  }
+}
+function openSheet(open){ $('sheet').hidden = !open; $('vLayers').setAttribute('aria-pressed', open); if (open) buildSheet(); }
+$('vLayers').onclick = () => openSheet($('sheet').hidden);
+$('sheetClose').onclick = () => openSheet(false);
+
+function boxOf(list){ const b = new THREE.Box3(); list.forEach(x => b.union(x.box)); return b; }
+function frame(box, pad, front){
+  const size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+  const r = Math.max(size.length() / 2, 250);
+  const vf = THREE.MathUtils.degToRad(camera.fov) / 2, hf = Math.atan(Math.tan(vf) * camera.aspect);
+  const dist = r / Math.sin(Math.min(vf, hf)) * (pad || 1.02);
+  // look at the cabinet's front: from its centre toward its doors / drawer fronts
+  let dir = new THREE.Vector3(-0.45, 0.42, 1).normalize();
+  if (front){
+    const f = front.clone().sub(ctr); f.y = 0;
+    if (f.length() > 1){ f.normalize(); const side = new THREE.Vector3(-f.z, 0, f.x); dir = f.multiplyScalar(1).addScaledVector(side, 0.45).add(new THREE.Vector3(0, 0.42, 0)).normalize(); }
+  }
+  camera.position.copy(ctr).addScaledVector(dir, dist);
+  camera.near = Math.max(20, dist / 200); camera.far = dist * 20 + 20000; camera.updateProjectionMatrix();
+  controls.target.copy(ctr); controls.update();
+}
+function cabFront(cab){
+  // a point straight out from the cabinet's doors/drawers (uses the fronts' facing, not the box centre,
+  // so long shared parts like LED panels don't skew the view)
+  // corner cabinets face two ways, so average the facing of all their fronts
+  const mvs = [...new Set(cab.map(x => x.mover).filter(m => m && !m.m.inner && m.front && cab.includes(m.front)))];
+  const fronts = cab.filter(x => /DSLAB|DOOR|DF/i.test(x.p.code || ''));
+  if (!fronts.length) return null;
+  const c = boxOf(fronts).getCenter(new THREE.Vector3());
+  const dir = new THREE.Vector3(); mvs.forEach(m => dir.add(m.n));
+  if (dir.length() > 0.1){ const ctr = boxOf(cab).getCenter(new THREE.Vector3()); const p = ctr.clone().addScaledVector(dir.normalize(), 1000); p.y = c.y; return p; }
+  return c;
+}
+// the side of the job the doors and drawers face, so the whole-job view opens on the kitchen's face
+function jobFront(){
+  const n = new THREE.Vector3();
+  for (const mv of movers) if (!mv.m.inner && !mv.parentMv) n.add(mv.n);
+  n.y = 0; if (n.length() < 0.1) return null;
+  const c = boxOf(parts).getCenter(new THREE.Vector3());
+  return c.addScaledVector(n.normalize(), 1000);
+}
+function reframe(){
+  if (iso !== null){
+    const cab = parts.filter(x => isoGs.has(x.p.g));
+    // frame the cabinet's own body: long shared parts it happens to own (a rangehood's 2.7 m underpanel)
+    // would otherwise shrink it to a speck
+    const longOk = x => { const c = CABS[x.p.g], W = c && c.whd ? Math.max(c.whd[0], c.whd[2]) : 0;
+      const s = x.box.getSize(new THREE.Vector3()); return !W || Math.max(s.x, s.z) <= W + 60; };
+    const core = cab.filter(longOk);
+    const bx = boxOf((core.length ? core : cab).concat(hardware.filter(h => isoGs.has(h.p.g) && longOk(h))));
+    if (dims && dims.visible) bx.expandByScalar(220);       // leave room for the dimension lines and labels
+    frame(bx, exTarget ? 1.5 : 0.85, cabFront(cab));
+    return;
+  }
+  if (view === 'job' || !sel) frame(boxOf(parts), 1.02, jobFront());
+  else {
+    const cab = parts.filter(x => x.p.g === sel.p.g);
+    const fronts = cab.filter(x => /DSLAB|DOOR|DF/i.test(x.p.code || ''));
+    const front = fronts.length ? boxOf(fronts).getCenter(new THREE.Vector3()) : null;
+    frame(boxOf(cab), 1.5, front);
+  }
+}
+
+function show(x){
+  sel = x || null; selCab = null; $('ptag').textContent = 'CAB';
+  const card = $('card'); delete card.dataset.msg;
+  if (!sel){
+    card.classList.add('empty'); $('pid').textContent = '–';
+    $('pname').textContent = BOOT.roomName;
+    $('pwhere').textContent = 'Tap a door or drawer to open it. Press Comment, then tap a spot, to leave us a note.';
+    $('pspecs').innerHTML = '<span class="disc">A guide only: colours, textures and small details may differ. The signed drawings are what is made.</span>';
+  } else {
+    const p = sel.p;
+    card.classList.remove('empty'); $('pid').textContent = p.id;
+    $('pname').textContent = p.name;
+    $('pwhere').textContent = 'Cab ' + p.cabNo + ' · ' + p.cabName;
+    $('room').textContent = p.room || 'Room 1';
+    const t = Number.isFinite(p.thick) ? Math.round(p.thick) : '';
+    $('pspecs').innerHTML =
+      '<span><b>' + Math.round(p.L) + ' × ' + Math.round(p.W) + (t ? ' × ' + t : '') + '</b> mm</span>' +
+      '<span>' + esc(p.material || '') + '</span><span>' + esc(p.code) + '</span>';
+    infoClosed = false;
+    // a part is usually inside its cabinet (a shelf behind the doors): see-through view, so it shows
+    // through everything around it. The Solid button turns the solid view back on.
+    setSolid(false);
+  }
+  updateCard(); paint(); reframe();
+}
+// whole job: a tap picks a cabinet (never a single part) and shows its number, name and size
+function showCab(g){
+  selCab = g === undefined ? null : g; sel = null;
+  if (selCab === null){ show(null); return; }
+  const c = CABS[g] || {}, no = cabNoOf(g);
+  $('card').classList.remove('empty'); delete $('card').dataset.msg; infoClosed = false;
+  $('ptag').textContent = 'CAB'; $('pid').textContent = no || '–';
+  $('pname').textContent = c.n || 'Cabinet';
+  $('pwhere').textContent = (TYPE_NAMES[c.t] || 'Cabinet').replace(/s( |$)/, '$1') + ' · double-tap to see it on its own';
+  $('pspecs').innerHTML = c.whd ? '<span>W <b>' + fmt(c.whd[0]) + '</b> · H <b>' + fmt(c.whd[1]) + '</b> · D <b>' + fmt(c.whd[2]) + '</b> mm</span>' : '';
+  updateCard(); paint();
+}
+
+
+function setView(v){ view = v; $('vCab').setAttribute('aria-pressed', v === 'cab'); $('vJob').setAttribute('aria-pressed', v === 'job'); reframe(); }
+function hintText(){
+  $('hint').textContent = picking ? 'Tap cabinets to add or remove them, then press Isolate'
+    : iso !== null ? 'Tap a part for its info (doors open too) · double-tap to go back'
+    : 'Tap a door or drawer to open it · tap a cabinet for its size · double-tap to see it on its own';
+}
+function isolate(g){
+  // g: one cabinet, a list of cabinets, or null for the whole job
+  const gs = g === null ? [] : Array.isArray(g) ? g : [g];
+  if (!gs.length) g = null;
+  isoGs = new Set(gs); iso = gs.length ? gs[0] : null; exTarget = 0; ex = 0; exDirty = true;
+  if (g !== null) setPicking(false);
+  const items = parts.concat(hardware).filter(x => isoGs.has(x.p.g));
+  for (const x of parts.concat(hardware)) x.off = null;
+  if (g !== null){
+    const cc = boxOf(items).getCenter(new THREE.Vector3());
+    // explode the cabinet's own parts only; appliances, hinges and other hardware stay put
+    // (hardware on a door or drawer still travels with it)
+    for (const x of items) x.off = parts.includes(x) ? x.box.getCenter(new THREE.Vector3()).sub(cc).multiplyScalar(0.9) : null;
+    const named = parts.find(x => x.p.g === iso && x.p.cabNo);
+    const no = cabNoOf(iso);
+    const nos = gs.map(cabNoOf).filter(Boolean).sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
+    $('room').textContent = gs.length > 1 ? 'Cabs ' + (nos.length ? nos.join(', ') : gs.length) : named ? 'Cab ' + named.p.cabNo + ' · ' + named.p.cabName : no ? 'Cab ' + no : 'Cabinet';
+  } else {
+    const p = sel && sel.p; $('room').textContent = (p && p.room) || (parts.find(x => x.p.room) || {p:{}}).p.room || 'Room 1';
+  }
+  const on = g !== null;
+  $('vCab').hidden = on; $('vJob').hidden = on; $('vSee').hidden = !on;
+  isoSolid = true; $('vSee').setAttribute('aria-pressed', false);
+  $('vSolid').hidden = on;
+  $('vExplode').hidden = !on; $('vBack').hidden = !on; $('vPrev').hidden = !on || gs.length > 1; $('vNext').hidden = !on || gs.length > 1;
+  $('vMulti').hidden = on;
+  $('vExplode').setAttribute('aria-pressed', false); $('vExplode').textContent = 'Explode';
+  $('vDims').hidden = !on; $('vDims').setAttribute('aria-pressed', dimsOn);
+
+  tipSel = null; $('tip').hidden = true; $('hint').hidden = false;
+  buildDims();
+  updateCard();
+  hintText(); paint();
+  if (!$('sheet').hidden) buildSheet();
+  requestAnimationFrame(() => { resize(); reframe(); });
+}
+$('vExplode').onclick = () => { exTarget = exTarget ? 0 : 1; $('vExplode').setAttribute('aria-pressed', !!exTarget);
+  $('vExplode').textContent = exTarget ? 'Put back' : 'Explode'; if (dims) dims.visible = !exTarget; reframe(); };
+$('vSee').onclick = () => { isoSolid = !isoSolid; $('vSee').setAttribute('aria-pressed', !isoSolid); paint(); };
+// step through cabinets in cabinet-number order (cabinets with no number follow, in model order)
+function cabOrder(){
+  const gs = [...new Set(parts.map(x => x.p.g))].filter(g => g >= 0);
+  const num = g => { const n = parseInt(cabNoOf(g), 10); return isNaN(n) ? 1e9 + g : n; };
+  return gs.sort((a, b) => num(a) - num(b));
+}
+function stepCab(d){
+  if (iso === null) return;
+  const order = cabOrder(), i = order.indexOf(iso);
+  for (const mv of movers) mv.target = 0;
+  isolate(order[(i + d + order.length) % order.length]);
+}
+$('vPrev').onclick = () => stepCab(-1);
+$('vNext').onclick = () => stepCab(1);
+$('vBack').onclick = () => { for (const mv of movers) mv.target = 0; isolate(null); };
+$('vCab').onclick = () => setView('cab');
+$('vJob').onclick = () => setView('job');
+function setSolid(v){ solid = v; $('vSolid').setAttribute('aria-pressed', solid); hintText(); paint(); }
+$('vSolid').onclick = () => setSolid(!solid);
+
+// tap: open a door/drawer (Solid or isolated) or pick a part; double-tap: isolate that cabinet
+const ray = new THREE.Raycaster(); let down = null, lastTap = null, tapTimer = null;
+function pick(e){
+  const r = renderer.domElement.getBoundingClientRect();
+  ray.setFromCamera({x:(e.clientX - r.left) / r.width * 2 - 1, y:-(e.clientY - r.top) / r.height * 2 + 1}, camera);
+  // walls, floor, windows and room doors are never tapped: taps go straight through them to the cabinets
+  const all = parts.concat(hardware.filter(h => h.p.k !== 'wall' && h.p.k !== 'room'));
+  const hit = ray.intersectObjects(all.flatMap(x => x.meshes.filter(m => m.visible)))[0];
+  return hit ? all.find(q => q.meshes.includes(hit.object)) : null;
+}
+function singleTap(x){
+  if (picking){                             // picking cabinets: tap adds / removes the whole cabinet
+    if (x && x.p.g !== undefined && x.p.g >= 0){ pickSet.has(x.p.g) ? pickSet.delete(x.p.g) : pickSet.add(x.p.g); updatePick(); }
+    return;
+  }
+  if (iso !== null){                        // isolated cabinet: tap shows the part's info (doors still open)
+    if (x && x.mover) toggleMover(x.mover);
+    if (x && parts.includes(x)) showTip(x); else if (!x) showTip(null);
+    return;
+  }
+  if (!x){ if (selCab !== null) showCab(null); return; }
+  if (x.mover && !x.mover.m.fixed){ toggleMover(x.mover); return; }   // solid or see-through: doors open
+  if (x.p.g !== undefined && x.p.g >= 0) showCab(selCab === x.p.g ? null : x.p.g);
+}
+renderer.domElement.addEventListener('pointerdown', e => down = [e.clientX, e.clientY]);
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
+  if (commenting){ if (!pending) startNote(e); return; }
+  const now = performance.now(), x = pick(e);
+  if (lastTap && now - lastTap.t < 330 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30){
+    clearTimeout(tapTimer); lastTap = null;
+    if (picking){ singleTap(x); return; }
+    if (iso !== null){ for (const mv of movers) mv.target = 0; isolate(null); }
+    else if (x && x.p.g !== undefined && x.p.g >= 0) isolate(x.p.g);
+    return;
+  }
+  lastTap = {t: now, x: e.clientX, y: e.clientY};
+  clearTimeout(tapTimer); tapTimer = setTimeout(() => singleTap(x), 260);
+});
+renderer.domElement.addEventListener('dblclick', e => e.preventDefault());
+
+// ---- pick several cabinets and isolate them together ----
+function updatePick(){
+  $('vGo').hidden = !picking;
+  $('vGo').disabled = !pickSet.size;
+  $('vGo').textContent = 'Isolate' + (pickSet.size ? ' (' + pickSet.size + ')' : '');
+  paint();
+}
+function setPicking(on){
+  picking = on; if (!on) pickSet.clear();
+  $('vMulti').setAttribute('aria-pressed', on); $('vMulti').textContent = on ? 'Cancel' : 'Select cabs';
+  if (on) for (const mv of movers) mv.target = 0;
+  updateCard();
+  hintText(); updatePick();
+}
+$('vMulti').onclick = () => setPicking(!picking);
+$('vGo').onclick = () => { if (pickSet.size) isolate([...pickSet]); };
+
+// ---- part info card (isolated view) ----
+function edgeText(code){
+  const m = String(code || '').match(/^(\d+)([A-Z]*)$/i);
+  if (!m) return '';
+  const n = m[2].split('').filter(c => c.toUpperCase() !== 'N').length;
+  return (n ? n + ' of ' + m[1] + ' edges taped' : 'No edge tape') + ' (' + code + ')';
+}
+function showTip(x){
+  tipSel = x || null;
+  if (!x){ $('tip').hidden = true; $('hint').hidden = false; paint(); return; }
+  const p = x.p, no = cabNoOf(p.g), c = CABS[p.g] || {};
+  $('tid').textContent = no || '–';
+  $('tname').textContent = partLabel(x);
+  $('twhere').textContent = c.n || 'Cabinet';
+  const bits = ['<span><b>' + sizeOf(x) + '</b> mm</span>'];
+  const mat = (x.meshes[0] && matName(x.meshes[0].userData.mi)) || '';
+  if (mat) bits.push('<span>' + esc(mat) + '</span>');
+  $('tspecs').innerHTML = bits.join('');
+  $('tnote').hidden = true;
+  $('tip').hidden = false; $('hint').hidden = true;
+  paint();
+}
+$('tclose').onclick = () => showTip(null);
+
+// ---- dimensions: cabinet width above, height and depth on the side (CV's cabinet sizes) ----
+function dimLabel(text){
+  // drawing style: just the number, no box. A thin halo in the background colour keeps it readable
+  // where it crosses a line or a cabinet.
+  const font = '600 44px "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif';
+  const m = document.createElement('canvas').getContext('2d'); m.font = font;
+  const tw = Math.ceil(m.measureText(text).width);
+  const c = document.createElement('canvas'); c.width = tw + 16; c.height = 60;
+  const g = c.getContext('2d');
+  g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineJoin = 'round'; g.lineWidth = 6; g.strokeStyle = css('--stage'); g.strokeText(text, c.width / 2, 32);
+  g.fillStyle = css('--fg'); g.fillText(text, c.width / 2, 32);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: t, depthTest: false, depthWrite: false, sizeAttenuation: false, transparent: true}));
+  sp.userData.aspect = c.width / c.height;
+  sp.scale.set(0.024 * sp.userData.aspect, 0.024, 1); sp.renderOrder = 22;
+  return sp;
+}
+function fmt(v){ return (Math.round(v * 10) / 10).toString(); }
+function buildDims(){
+  if (dims){ scene.remove(dims); dims.traverse(o => { if (o.geometry && !o.isSprite) o.geometry.dispose(); if (o.material){ if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); dims = null; }
+  if (iso === null || !dimsOn) return;
+  const group = new THREE.Group(), pts = [];
+  // several cabinets: every width, but height and depth only once, on the right-most cabinet
+  const gs = [...isoGs].filter(g => parts.some(x => x.p.g === g));
+  let last = gs[0], best = -Infinity;
+  if (gs.length > 1){
+    const f0 = new THREE.Vector3(); for (const m of movers) if (!m.m.inner && isoGs.has(parts[m.m.f] && parts[m.m.f].p.g)) f0.add(m.n);
+    f0.y = 0; if (f0.length() < 0.1) f0.set(0, 0, 1); f0.normalize();
+    const r0 = new THREE.Vector3(0, 1, 0).cross(f0);
+    for (const g of gs){ const c = boxOf(parts.filter(x => x.p.g === g)); const v = Math.max(c.min.dot(r0), c.max.dot(r0)) + c.max.y * 1e-3; if (v > best){ best = v; last = g; } }
+  }
+  for (const g of gs) dimsFor(g, group, pts, g === last);
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const line = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({color: new THREE.Color(css('--fg')), depthTest: false, transparent: true}));
+  line.renderOrder = 21; group.add(line);
+  group.visible = !exTarget;
+  dims = group; scene.add(group);
+}
+function dimsFor(gid, group, pts, sideDims){
+  const cab = parts.filter(x => x.p.g === gid); if (!cab.length) return;
+  const B = boxOf(cab), lo = B.min, hi = B.max;
+  // front: the way the doors/drawers face (else the long side of the box)
+  const f = new THREE.Vector3(); for (const m of new Set(cab.map(x => x.mover).filter(Boolean))) if (!m.m.inner) f.add(m.n);
+  f.y = 0;
+  const size = B.getSize(new THREE.Vector3());
+  let a = Math.abs(f.x) > Math.abs(f.z) ? 'x' : 'z';
+  if (f.length() < 0.1) a = size.x > size.z ? 'z' : 'x';
+  const s = f[a] < 0 ? -1 : 1, b = a === 'x' ? 'z' : 'x';
+  const front = s > 0 ? hi[a] : lo[a], back = s > 0 ? lo[a] : hi[a];
+  // keep the height/depth on the viewer's right of the front
+  const right = new THREE.Vector3(0, 0, 0); right[a] = s; right.cross(new THREE.Vector3(0, 1, 0)).negate();
+  const sideSign = right[b] >= 0 ? 1 : -1, side = sideSign > 0 ? hi[b] : lo[b];
+  const whd = (CABS[gid] && CABS[gid].whd) || null;
+  const W = whd ? whd[0] : size[b], H = whd ? whd[1] : size.y, D = whd ? whd[2] : size[a];
+  const off = Math.max(70, Math.min(160, Math.max(size.x, size.y, size.z) * 0.08)), ext = 25;
+  const P = (pa, pb, py) => { const v = new THREE.Vector3(); v[a] = pa; v[b] = pb; v.y = py; return v; };
+  const seg = (u, v) => pts.push(u, v);
+  // width: above the top, along the front
+  const yW = hi.y + off;
+  seg(P(front, lo[b], hi.y + 10), P(front, lo[b], yW + ext)); seg(P(front, hi[b], hi.y + 10), P(front, hi[b], yW + ext));
+  seg(P(front, lo[b], yW), P(front, hi[b], yW));
+  const lw = dimLabel(fmt(W)); lw.position.copy(P(front, (lo[b] + hi[b]) / 2, yW)); lw.center.set(0.5, -0.05); group.add(lw);
+  const slash = (v, axis) => { const u = v.clone(), w = v.clone(); u[axis] -= 12; u.y -= 12; w[axis] += 12; w.y += 12; seg(u, w); };
+  slash(P(front, lo[b], yW), b); slash(P(front, hi[b], yW), b);
+  if (!sideDims) return;
+  // height: beside the cabinet, at the front
+  const bH = side + sideSign * off;
+  seg(P(front, side + sideSign * 10, lo.y), P(front, bH + sideSign * ext, lo.y)); seg(P(front, side + sideSign * 10, hi.y), P(front, bH + sideSign * ext, hi.y));
+  seg(P(front, bH, lo.y), P(front, bH, hi.y));
+  const lh = dimLabel(fmt(H)); lh.position.copy(P(front, bH, (lo.y + hi.y) / 2)); lh.center.set(-0.08, 0.5); group.add(lh);
+  // depth: along the side at the top
+  const yD = hi.y + off;
+  seg(P(back, side, hi.y + 10), P(back, side, yD + ext));
+  seg(P(front, side, hi.y + 10), P(front, side, yD + ext));
+  seg(P(back, side, yD), P(front, side, yD));
+  const ld = dimLabel(fmt(D)); ld.position.copy(P((front + back) / 2, side, yD)); ld.center.set(0.5, -0.05); group.add(ld);
+  { const u = P(front, bH, lo.y), v = P(front, bH, hi.y); for (const q of [u, v]){ const m = q.clone(), n = q.clone(); m[b] -= 12; m.y -= 12; n[b] += 12; n.y += 12; seg(m, n); } }
+  slash(P(back, side, yD), a); slash(P(front, side, yD), a);
+}
+$('vDims').onclick = () => { dimsOn = !dimsOn; $('vDims').setAttribute('aria-pressed', dimsOn);
+  try { localStorage.setItem('cp-dims', dimsOn ? '1' : '0'); } catch (_) {}
+  buildDims(); reframe(); };
+
+function resize(){
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(() => { resize(); }).observe(stage);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', paint);
+new MutationObserver(paint).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
+
+// ---- comments: press Comment, tap the spot, write a note. Notes stay on this device (all rooms of the job)
+// until sent: "Send by email" writes them into an email to us, each with a link that opens this exact view ----
+const NOTE_SLOT = 'cp-notes-' + BOOT.id, NAME_SLOT = 'cp-name';
+let notes = [], commenting = false, pending = null;
+try { notes = JSON.parse(localStorage.getItem(NOTE_SLOT) || '[]'); } catch (_) {}
+try { $('cname').value = localStorage.getItem(NAME_SLOT) || ''; } catch (_) {}
+const saveNotes = () => { try { localStorage.setItem(NOTE_SLOT, JSON.stringify(notes)); } catch (_) {} };
+const r1 = v => Math.round(v);
+const pinGroup = new THREE.Group(); pinGroup.renderOrder = 30; scene.add(pinGroup);
+function pinSprite(label, strong){
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.beginPath(); g.arc(32, 32, 27, 0, Math.PI * 2); g.fillStyle = strong ? css('--hi') : css('--fg'); g.fill();
+  g.lineWidth = 5; g.strokeStyle = '#ffffff'; g.stroke();
+  g.fillStyle = strong ? css('--hi-ink') : css('--bg'); g.font = '600 28px "IBM Plex Mono", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(label, 32, 34);
+  const t = new THREE.CanvasTexture(c);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: t, depthTest: false, depthWrite: false, sizeAttenuation: false, transparent: true}));
+  sp.scale.set(0.045, 0.045, 1); sp.renderOrder = 30; return sp;
+}
+function drawPins(){
+  for (const s of [...pinGroup.children]){ pinGroup.remove(s); s.material.map.dispose(); s.material.dispose(); }
+  for (const n of notes) if (n.room === BOOT.roomName){ const s = pinSprite(String(n.n), false); s.position.fromArray(n.p); pinGroup.add(s); }
+  if (pending){ const s = pinSprite('+', true); s.position.fromArray(pending.p); pinGroup.add(s); }
+  if (BOOT.view){ const s = pinSprite('!', true); s.position.fromArray(BOOT.view.slice(0, 3)); pinGroup.add(s); }
+  $('cList').textContent = 'Comments' + (notes.length ? ' (' + notes.length + ')' : '');
+}
+function setCommenting(on){
+  commenting = on; $('cBtn').setAttribute('aria-pressed', on); $('cBtn').textContent = on ? 'Cancel' : 'Comment';
+  if (on){ openNotes(false); openSheet(false); }
+  $('hint').textContent = on ? 'Tap the spot your comment is about' : ''; if (!on) hintText();
+  $('hint').hidden = false;
+}
+$('cBtn').onclick = () => { if (pending) closeEditor(); else setCommenting(!commenting); };
+function spotAt(e){
+  const r = renderer.domElement.getBoundingClientRect();
+  ray.setFromCamera({x:(e.clientX - r.left) / r.width * 2 - 1, y:-(e.clientY - r.top) / r.height * 2 + 1}, camera);
+  const all = parts.concat(hardware);
+  const hit = ray.intersectObjects(all.flatMap(x => x.meshes.filter(m => m.visible && m.material.opacity > .3)))[0];
+  return hit ? hit.point : null;
+}
+function startNote(e){
+  const p = spotAt(e);
+  if (!p){ $('hint').textContent = 'Tap on the joinery, a wall or the floor'; return; }
+  pending = {p: [r1(p.x), r1(p.y), r1(p.z)]};
+  drawPins();
+  $('ceditTitle').textContent = 'Comment ' + (notes.reduce((m, n) => Math.max(m, n.n), 0) + 1) + ' · ' + BOOT.roomName;
+  $('ctext').value = ''; $('cedit').hidden = false; $('card').hidden = true; $('ctext').focus();
+}
+function closeEditor(){ pending = null; $('cedit').hidden = true; setCommenting(false); drawPins(); updateCard(); }
+$('cCancel').onclick = closeEditor;
+$('cSave').onclick = () => {
+  const text = $('ctext').value.trim();
+  if (!text){ $('ctext').focus(); return; }
+  const cam = camera.position, tg = controls.target;
+  notes.push({n: notes.reduce((m, n) => Math.max(m, n.n), 0) + 1, room: BOOT.roomName, r: BOOT.room, text,
+              p: pending.p, v: [r1(cam.x), r1(cam.y), r1(cam.z), r1(tg.x), r1(tg.y), r1(tg.z)],
+              rev: BOOT.index.rev || '', at: new Date().toISOString().slice(0, 10)});
+  saveNotes(); closeEditor(); openNotes(true);
+};
+function noteLink(n){ return BOOT.link(n.r, n.p.concat(n.v)); }
+function emailText(){
+  const name = $('cname').value.trim(), ix = BOOT.index;
+  const lines = ['Comments on ' + ix.job + (ix.rev ? ' (Rev ' + ix.rev + ')' : ''), name ? 'From: ' + name : '', ''];
+  for (const n of notes) lines.push(n.n + '. ' + n.room + ': ' + n.text, '   See it: ' + noteLink(n), '');
+  return lines.filter((l, i) => l || i > 1).join('\n');
+}
+function updateSend(){
+  const ix = BOOT.index, to = ix.email || '';
+  const subject = 'Comments: ' + ix.job + (ix.rev ? ' Rev ' + ix.rev : '');
+  const a = $('cSend');
+  a.href = 'mailto:' + encodeURIComponent(to).replace(/%40/g, '@') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(emailText());
+  a.setAttribute('aria-disabled', notes.length ? 'false' : 'true');
+}
+function openNotes(open){
+  $('cpanel').hidden = !open;
+  if (!open){ updateCard(); return; }
+  $('card').hidden = true;
+  $('notes').innerHTML = notes.map(n => '<li><span class="n">' + n.n + '</span><span class="t">' + esc(n.text) + '</span>' +
+    '<button type="button" data-del="' + n.n + '" aria-label="Delete comment ' + n.n + '">Delete</button>' +
+    '<span class="w">' + esc(n.room) + (n.room === BOOT.roomName ? '' : ' (other room)') + '</span></li>').join('');
+  $('notesEmpty').hidden = notes.length > 0;
+  updateSend();
+}
+$('cList').onclick = () => openNotes($('cpanel').hidden);
+$('cpClose').onclick = () => openNotes(false);
+$('notes').addEventListener('click', e => {
+  const b = e.target.closest('[data-del]'); if (!b) return;
+  notes = notes.filter(n => String(n.n) !== b.dataset.del); saveNotes(); drawPins(); openNotes(true);
+});
+$('cname').addEventListener('input', () => { try { localStorage.setItem(NAME_SLOT, $('cname').value); } catch (_) {} updateSend(); });
+$('cSend').addEventListener('click', () => {
+  if (!notes.length) return;
+  $('cMsg').textContent = 'Your email app should open with your comments. Once you have sent it, you can delete them here.';
+});
+$('cCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText(emailText()); $('cMsg').textContent = 'Copied. Paste it into an email to ' + (BOOT.index.email || 'us') + '.'; }
+  catch (_) { $('cMsg').textContent = 'Could not copy on this browser - use Send by email instead.'; }
+};
+// a comment's own link: open on its view, with its spot marked
+function openView(){
+  if (!BOOT.view) return;
+  const v = BOOT.view;
+  camera.position.set(v[3], v[4], v[5]); controls.target.set(v[6], v[7], v[8]);
+  const d = camera.position.distanceTo(controls.target);
+  camera.near = Math.max(20, d / 200); camera.far = d * 20 + 20000; camera.updateProjectionMatrix(); controls.update();
+}
+
+resize(); hintText(); show(null); drawPins(); openView();
+(function loop(t){
+  if (sel) for (const m of sel.meshes) m.material.emissiveIntensity = still ? .35 : .2 + .25 * (1 + Math.sin((t || 0) / 300)) / 2;
+  moveStep(); controls.update(); wallStep(); renderer.render(scene, camera); requestAnimationFrame(loop);
+})();
+}
+</script>
+
+</body></html>
