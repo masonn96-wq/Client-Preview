@@ -865,7 +865,8 @@ function grainTexture(kind, srcS){
 // the library: board and stone finishes from every job published (textures/library.json, written by the sync)
 let LIB = [];
 const libOf = v => LIB.find(d => d.t === v.slice(4));     // 'lib:<picture file>'
-fetch('textures/library.json', {cache: 'no-cache'}).then(r => r.ok ? r.json() : []).then(l => { LIB = Array.isArray(l) ? l : [];
+const LIB_SKIP = /electrolux|bosch|smeg|miele|fisher|westinghouse|asko|fridge|oven|cooktop|dishwasher|rangehood|microwave|screenshot|^texture\d*$|^white$|^black\d*$/i;
+fetch('textures/library.json', {cache: 'no-cache'}).then(r => r.ok ? r.json() : []).then(l => { LIB = (Array.isArray(l) ? l : []).filter(d => d && d.t && !LIB_SKIP.test(d.name || ''));
   for (const [label, v] of Object.entries(finishChoice)) if (v.startsWith('lib:')) applyFinish(label, v);
   applyObjFinishes(); }).catch(() => {});
 function finishSwatch(v){                        // css background for a choice
