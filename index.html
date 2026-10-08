@@ -193,7 +193,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--display);font-size:1
     <div class="mtotal" id="mTotal" aria-live="polite">– <small>mm</small></div>
     <div class="maxes" id="mAxes"></div>
     <div class="msnap" id="mSnap"></div>
-    <div class="mrow"><label><input type="checkbox" id="mStraight"> Keep it straight (X / Y / Z)</label><button type="button" id="mUndo">Undo</button><button type="button" id="mClear">Clear all</button></div>
+    <div class="mrow"><label><input type="checkbox" id="mStraight" checked> Straight (level / plumb)</label><button type="button" id="mUndo">Undo</button><button type="button" id="mClear">Clear all</button></div>
     <ol class="mlist" id="mList" hidden></ol>
   </section>
   <section class="spanel" id="spanel" hidden aria-label="Section">
@@ -414,6 +414,9 @@ const ENV_LEVEL = 0.4;
 // section cuts: three planes (height, left-right, front-back) shared by every model material; off = pushed far away
 const CLIP = [new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e7), new THREE.Plane(new THREE.Vector3(-1, 0, 0), 1e7), new THREE.Plane(new THREE.Vector3(0, 0, -1), 1e7)];
 renderer.localClippingEnabled = true;
+// redraw only when something changed (camera, doors, a finish, a texture arriving...): an idle view costs nothing
+let forceFrame = true, busyUntil = 0;
+const markDirty = ms => { forceFrame = true; if (ms) busyUntil = Math.max(busyUntil, performance.now() + ms); };
 const clipped = p => CLIP.some(pl => pl.distanceToPoint(p) < -0.01);
 // ---- materials (v2 files carry real CV materials + textures; v1 files get plain board colour) ----
 const loader = new THREE.TextureLoader();
@@ -441,7 +444,7 @@ function texture(file){
           const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
           c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); t.image = c; t.needsUpdate = true;
         }
-        (texVariants[file] || []).forEach(v => { v.image = t.image; v.needsUpdate = true; }); texUsers[file].forEach(m => { m.needsUpdate = true; }); },
+        (texVariants[file] || []).forEach(v => { v.image = t.image; v.needsUpdate = true; }); texUsers[file].forEach(m => { m.needsUpdate = true; }); markDirty(); },
       undefined,
       () => texUsers[file].forEach(m => { m.map = null; m.color.copy(m.userData.fallback); m.userData.base.copy(m.userData.fallback); m.needsUpdate = true; }));
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = Math.min(PHONE ? 4 : 8, renderer.capabilities.getMaxAnisotropy());
@@ -576,6 +579,7 @@ function wallStep(){
     w.fade += (want - w.fade) * (still ? 1 : 0.2);
     if (Math.abs(w.fade - want) < 0.005) w.fade = want;
     for (const m of w.meshes){ m.material.opacity = w.fade; m.material.depthWrite = w.fade > .9; m.renderOrder = w.fade > .9 ? 0 : 3; }
+    forceFrame = true;
   }
 }
 const byId = new Map(parts.filter(x => x.p.id).map(x => [String(x.p.id), x]));
@@ -701,7 +705,8 @@ let emptyClosed = false, infoClosed = false;
 try { emptyClosed = localStorage.getItem('cp-card-closed') === '1'; } catch (_) {}
 function cardEmpty(){ return $('card').classList.contains('empty') && !$('card').dataset.msg; }
 function updateCard(){
-  $('card').hidden = iso !== null || picking || !$('cpanel').hidden || !$('cedit').hidden || !$('tourbar').hidden || (cardEmpty() ? emptyClosed : infoClosed);
+  // nothing picked: no banner (the room is the point); a cabinet or part tapped brings it up
+  $('card').hidden = iso !== null || picking || !$('cpanel').hidden || !$('cedit').hidden || !$('tourbar').hidden || cardEmpty() || infoClosed;
 }
 $('cardClose').onclick = () => {
   if (cardEmpty()){ emptyClosed = true; try { localStorage.setItem('cp-card-closed', '1'); } catch (_) {} }
@@ -721,7 +726,7 @@ function setLook(x, opacity, edgeColor, edgeOpacity, tint){
   for (const e of x.edges){ e.material.color.copy(edgeColor); e.material.opacity = edgeOpacity; e.material.visible = edgeOpacity > 0; }
 }
 function paint(){
-  shadowDirty = true;
+  shadowDirty = true; forceFrame = true;
   const c = n => new THREE.Color(css(n));
   scene.background = c('--stage');
   const hi = c('--hi'), edge = c('--edge'), ghost = c('--ghost');
@@ -886,6 +891,7 @@ function applyVisibility(){
     else if (k === 'panel' && x.p.g < 0) on = !hiddenTypes.has('panel');
     else on = !hiddenTypes.has(typeOf(x.p.g)) && !(k === 'hw' && hideHardware);
     if (hiddenParts.has(x)) on = false;
+    if (x.p.cut) on = false;                       // a sink cabinet's top under the sink (left out of the preview)
     for (const ob of x.meshes.concat(x.edges)) ob.visible = on && !(isSheet(ob.userData.mi) && hiddenMats.has(matName(ob.userData.mi)));
   }
   updateLabels();
@@ -1037,8 +1043,7 @@ function show(x){
     $('room').textContent = p.room || 'Room 1';
     const t = Number.isFinite(p.thick) ? Math.round(p.thick) : '';
     $('pspecs').innerHTML =
-      '<span><b>' + Math.round(p.L) + ' × ' + Math.round(p.W) + (t ? ' × ' + t : '') + '</b> mm</span>' +
-      '<span>' + esc(p.material || '') + '</span><span>' + esc(p.code) + '</span>';
+      '<span><b>' + Math.round(p.L) + ' × ' + Math.round(p.W) + (t ? ' × ' + t : '') + '</b> mm</span>';
     infoClosed = false;
     // a part is usually inside its cabinet (a shelf behind the doors): see-through view, so it shows
     // through everything around it. The Solid button turns the solid view back on.
@@ -1203,8 +1208,6 @@ function showTip(x){
   $('tname').textContent = partLabel(x);
   $('twhere').textContent = c.n || 'Cabinet';
   const bits = ['<span><b>' + sizeOf(x) + '</b> mm</span>'];
-  const mat = (x.meshes[0] && matName(x.meshes[0].userData.mi)) || '';
-  if (mat) bits.push('<span>' + esc(mat) + '</span>');
   $('tspecs').innerHTML = bits.join('');
   $('tnote').hidden = true;
   $('tip').hidden = false; $('hint').hidden = true;
@@ -1390,7 +1393,7 @@ function tourStops(){
       for (const back of [Math.min(Math.max((b - a) * 0.95 + 500, 1300), 2300), 1500, 1100, 800]){
         const e = new THREE.Vector3(); e[r.ax] = mid; e[r.ax === 'z' ? 'x' : 'z'] = front;
         const eye = freeSpot(e.addScaledVector(n, back));
-        if (seen(eye, cabs) > 0){ out.push({eye, look}); break; }    // too far / a wall between: step in closer
+        if (seen(eye, cabs) > 0){ out.push({eye, look, gs: cabs.map(c => c.g)}); break; }    // too far / a wall between: step in closer
       }
     }
     return out;
@@ -1549,34 +1552,66 @@ function startTour(){
   const stops = tourStops();
   if (!stops.length){ $('hint').textContent = 'No joinery to tour in this room'; return; }
   if (!walking) enterWalk(stops[0]);
-  tour = {stops, i: 0, playing: true, timer: null};
+  tour = {stops, i: 0, playing: true, timer: null, timers: [], at: null};
   $('tourbar').hidden = false; $('card').hidden = true; $('hint').hidden = true;
   goStop(0);
 }
-function goStop(i){
+// at a stop: doors and drawers open (then the drawers and pull-outs behind the doors), then close again
+const OPEN_AT = 0.5, INNER_AFTER = 0.9, SHUT_BEFORE = 1.1;    // seconds
+function stopMovers(s){
+  const gs = new Set(s.gs || []);
+  return movers.filter(mv => !mv.m.fixed && !mv.parentMv && parts[mv.m.f] && gs.has(parts[mv.m.f].p.g));
+}
+function openStop(s){
+  const isIn = mv => mv.m.inner || (mv.covers && mv.covers.length);   // behind a door
+  const list = stopMovers(s), outer = list.filter(mv => !isIn(mv)), inner = list.filter(isIn);
+  for (const mv of outer){ mv.target = 1; mv.kids.forEach(k => { k.target = 1; }); }
+  tour.timers.push(setTimeout(() => { for (const mv of inner){ mv.target = 1; mv.kids.forEach(k => { k.target = 1; }); } markDirty(); }, INNER_AFTER * 1000));
+  markDirty();
+}
+function shutStop(s, then){
+  const list = s ? stopMovers(s) : movers, inner = list.filter(mv => mv.m.inner || (mv.covers && mv.covers.length));
+  for (const mv of inner){ mv.target = 0; mv.kids.forEach(k => { k.target = 0; }); }
+  const outer = () => { for (const mv of list){ mv.target = 0; mv.kids.forEach(k => { k.target = 0; }); if (mv.inners) mv.inners.forEach(n => { n.target = 0; }); } markDirty(); };
+  if (inner.some(mv => mv.k > 0.05)) tour.timers.push(setTimeout(() => { outer(); if (then) tour.timers.push(setTimeout(then, SHUT_BEFORE * 1000)); }, 700));
+  else { outer(); if (then) tour.timers.push(setTimeout(then, (list.some(mv => mv.k > 0.05) ? SHUT_BEFORE : 0) * 1000)); }
+}
+function clearTourTimers(){ if (tour){ (tour.timers || []).forEach(clearTimeout); tour.timers = []; } }
+function goStop(i, now){
   if (!tour) return;
-  clearTimeout(tour.timer);
+  clearTimeout(tour.timer); clearTourTimers();
+  const prev = tour.at != null ? tour.stops[tour.at] : null;
+  // playing: shut the last stop's doors before walking on; Prev / Next: shut them while walking
+  if (prev && tour.at !== ((i + tour.stops.length) % tour.stops.length)){ tour.at = null;
+    if (!now){ shutStop(prev, () => goStop(i)); return; }
+    for (const mv of stopMovers(prev)){ mv.target = 0; mv.kids.forEach(k => { k.target = 0; }); mv.inners.forEach(n => { n.target = 0; }); } }
   tour.i = (i + tour.stops.length) % tour.stops.length;
   const s = tour.stops[tour.i];
   $('tPos').textContent = (tour.i + 1) + ' / ' + tour.stops.length;
   $('tPlay').textContent = tour.playing ? 'Pause' : 'Play';
   glideTo(s.eye, s.look, Math.min(Math.max(s.eye.distanceTo(camera.position) / 1100, 1.2), 3.5), () => {
-    if (tour && tour.playing){
-      if (tour.i === tour.stops.length - 1){ tour.playing = false; $('tPlay').textContent = 'Play'; $('tPos').textContent = 'End · ' + tour.stops.length + ' stops'; }
-      else tour.timer = setTimeout(() => goStop(tour.i + 1), HOLD * 1000);
+    if (!tour) return;
+    tour.at = tour.i;
+    tour.timers.push(setTimeout(() => openStop(s), OPEN_AT * 1000));
+    if (tour.playing){
+      const hold = (HOLD + (stopMovers(s).length ? 3.2 : 0)) * 1000;
+      if (tour.i === tour.stops.length - 1) tour.timers.push(setTimeout(() => { if (!tour) return; shutStop(s); tour.at = null;
+        tour.playing = false; $('tPlay').textContent = 'Play'; $('tPos').textContent = 'End · ' + tour.stops.length + ' stops'; }, hold));
+      else tour.timer = setTimeout(() => goStop(tour.i + 1), hold);
     }
   });
 }
 function stopTour(){
   if (!tour) return;
-  clearTimeout(tour.timer); tour = null; glide = null;
+  clearTimeout(tour.timer); clearTourTimers(); tour = null; glide = null;
+  for (const mv of movers) mv.target = 0;                 // leave the room as it was: everything shut
   $('tourbar').hidden = true; $('hint').hidden = false; updateCard();
 }
-function pauseTour(){ if (tour && tour.playing){ tour.playing = false; clearTimeout(tour.timer); glide = null; $('tPlay').textContent = 'Play'; } }
+function pauseTour(){ if (tour && tour.playing){ tour.playing = false; clearTimeout(tour.timer); glide = null; $('tPlay').textContent = 'Play'; } }   // (doors stay as they are)
 $('vWalk').onclick = () => walking ? exitWalk() : enterWalk();
 $('vTour').onclick = () => tour ? stopTour() : startTour();
-$('tPrev').onclick = () => { if (tour){ tour.playing = false; goStop(tour.i - 1); } };
-$('tNext').onclick = () => { if (tour){ tour.playing = false; goStop(tour.i + 1); } };
+$('tPrev').onclick = () => { if (tour){ tour.playing = false; goStop(tour.i - 1, true); } };
+$('tNext').onclick = () => { if (tour){ tour.playing = false; goStop(tour.i + 1, true); } };
 $('tPlay').onclick = () => { if (!tour) return; tour.playing = !tour.playing;
   if (tour.playing) goStop(tour.i === tour.stops.length - 1 && $('tPos').textContent.startsWith('End') ? 0 : tour.i); else pauseTour(); };
 $('tExit').onclick = () => stopTour();
@@ -1785,7 +1820,7 @@ const measures = [], mGroup = new THREE.Group(); mGroup.renderOrder = 25; scene.
 const TOUCH = matchMedia('(pointer: coarse)').matches;
 const SNAP_PX = TOUCH ? {v: 26, mid: 20, edge: 18} : {v: 14, mid: 11, edge: 9};
 const SNAP_NAMES = {v: 'Corner', mid: 'Middle of edge', edge: 'Edge', face: 'Surface'};
-const mm = v => (Math.round(v * 100) / 100).toFixed(2);
+const mm = v => String(Math.round(v));          // whole mm (the model is exact to 0.01 mm; the reading rounds)
 function markerSprite(kind, strong){
   const c = document.createElement('canvas'); c.width = c.height = 48; const g = c.getContext('2d');
   g.lineWidth = 5; g.strokeStyle = '#ffffff'; g.fillStyle = strong ? css('--hi') : css('--fg');
@@ -1846,7 +1881,7 @@ function straighten(a, b){                       // keep only the biggest of the
   const d = b.clone().sub(a), ax = Math.abs(d.x) >= Math.abs(d.y) && Math.abs(d.x) >= Math.abs(d.z) ? 'x' : Math.abs(d.y) >= Math.abs(d.z) ? 'y' : 'z';
   const out = a.clone(); out[ax] = b[ax]; return out;
 }
-function straightOn(e){ return $('mStraight').checked || (e && e.shiftKey); }
+function straightOn(e){ return $('mStraight').checked !== !!(e && e.shiftKey); }   // Shift: the other way for one point
 function showReading(a, b, tail){
   const d = b.clone().sub(a);
   $('mTotal').innerHTML = mm(d.length()) + ' <small>mm</small>';
@@ -1873,6 +1908,7 @@ function drawMeasures(){
 }
 function hideHover(){ for (const k in hoverMark) hoverMark[k].visible = false; rubber.visible = false; }
 function measureHover(e){
+  markDirty();
   const s = snapAt(e.clientX, e.clientY); mHover = s; hideHover();
   if (!s){ $('mSnap').textContent = mFirst ? 'Pick the second point on the model' : 'Point at the model'; return; }
   const m = hoverMark[s.kind]; m.position.copy(s.p); m.visible = true;
@@ -1904,7 +1940,7 @@ function setMeasuring(on){
   measuring = on; $('vMeasure').setAttribute('aria-pressed', on); $('mpanel').hidden = !on;
   if (on){ if (commenting) setCommenting(false); openSheet(false); openSection(false); if (picking) setPicking(false); $('card').hidden = true; $('tip').hidden = true;
     $('mSnap').textContent = TOUCH ? 'Tap two points · it snaps to corners, edge middles and edges · zoom in for small parts'
-      : 'Click two points · snaps to corners, edge middles and edges · Shift keeps it straight · zoom in for small parts'; }
+      : 'Click two points · snaps to corners, edge middles and edges · Shift for a free (angled) line · zoom in for small parts'; }
   else { mFirst = null; hideHover(); hintText(); updateCard(); }
   $('hint').hidden = on; drawMeasures();
 }
@@ -1960,20 +1996,25 @@ function drawAO(){
   ao.renderPass(renderer, ao.copyMaterial, null);
   return true;
 }
-let lastFrame = 0;
+// Moving (orbit, glide, doors): plain frames, fast. Once it settles: one frame with the ambient occlusion.
+// Nothing changing: nothing drawn (the last picture stays up).
+let frameSig = '', aoDue = false;
+for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'input', 'click', 'touchstart', 'touchmove'])
+  addEventListener(ev, () => markDirty(250), {passive: true, capture: true});
 function render(t){
-  renderer.render(scene, camera);
-  if (!ao) return;
-  if (!drawAO()){ lastFrame = 0; return; }
-  // too slow (well under 25 frames a second for 2 s): drop the occlusion
-  if (lastFrame){ aoSlow = t - lastFrame > 45 ? aoSlow + 1 : Math.max(0, aoSlow - 2); if (aoSlow > 50){ ao = null; console.log('ambient occlusion off: too slow here'); } }
-  lastFrame = t;
+  const e = camera.matrixWorld.elements, pm = camera.projectionMatrix.elements;
+  const sig = e.join(',') + '|' + pm[0] + ',' + pm[5] + '|' + renderer.domElement.width + 'x' + renderer.domElement.height;
+  const moving = !!glide || ex !== exTarget || movers.some(m => m.moved);
+  const changed = sig !== frameSig || moving || forceFrame || t < busyUntil;
+  frameSig = sig; forceFrame = false;
+  if (changed){ renderer.render(scene, camera); aoDue = !!ao; return; }
+  if (aoDue){ aoDue = false; renderer.render(scene, camera); if (ao) drawAO(); }
 }
-new ResizeObserver(aoSize).observe(stage); aoSize();
+new ResizeObserver(() => { aoSize(); markDirty(); }).observe(stage); aoSize();
 
 resize(); hintText(); show(null); drawPins(); openView();
 (function loop(t){
-  if (sel) for (const m of sel.meshes) m.material.emissiveIntensity = still ? .35 : .2 + .25 * (1 + Math.sin((t || 0) / 300)) / 2;
+  if (sel) for (const m of sel.meshes) m.material.emissiveIntensity = .35;   // (steady: a pulse would keep redrawing)
   glideStep(); moveStep(); controls.update(); holdEye(); wallStep();
   if (shadowDirty || ex !== exTarget || movers.some(m => m.moved)){ renderer.shadowMap.needsUpdate = true; shadowDirty = false; }
   render(t || 0); requestAnimationFrame(loop);
