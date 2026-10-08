@@ -139,6 +139,34 @@ body{background:var(--bg);color:var(--fg);font-family:var(--display);font-size:1
 .srow span{font-size:13px}
 .srow output{grid-column:2;font:500 12px var(--mono);color:var(--muted);margin-top:-6px}
 .srow input[type=range]{width:100%;accent-color:var(--hi)}
+/* ready screen: everything loads and warms up behind it, so the first look (and the tour) runs smoothly */
+.prep{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:var(--stage);transition:opacity .35s}
+.prep.fade{opacity:0;pointer-events:none}
+.prepbox{display:grid;gap:10px;justify-items:center;text-align:center;padding:20px;max-width:320px}
+.prepbox b{font-size:18px}
+.prepbox span{color:var(--muted);font-size:14px}
+.prepbar{width:220px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.prepbar i{display:block;height:100%;width:0;background:var(--hi);transition:width .2s}
+/* measure magnifier: a zoomed look at the point being picked */
+.loupe{position:absolute;left:0;top:0;width:150px;height:150px;border:3px solid var(--hi);border-radius:10px;pointer-events:none;z-index:4;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.loupe::before,.loupe::after{content:"";position:absolute;background:var(--hi);opacity:.85}
+.loupe::before{left:50%;top:30%;bottom:30%;width:1px}
+.loupe::after{top:50%;left:30%;right:30%;height:1px}
+/* a tapped cabinet / part: hide it, or try another finish on it */
+.acts{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.acts button,.finpanel button{font:500 13px var(--display);padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;min-height:36px}
+.acts button.go{background:var(--hi);border-color:var(--hi);color:var(--hi-ink)}
+.finpanel{position:absolute;left:12px;right:12px;bottom:12px;max-width:480px;margin-left:auto;max-height:70%;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px 14px;box-shadow:0 8px 30px rgba(0,0,0,.15);z-index:3}
+.finpanel .mh{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:16px}
+.fpscope{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.fpscope button[aria-checked="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.fpgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+.fpgrid button{display:grid;gap:4px;padding:4px;min-height:0;text-align:left;font-size:11px;line-height:1.2}
+.fpgrid button[aria-pressed="true"]{outline:2px solid var(--hi);outline-offset:1px}
+.fpgrid i{display:block;height:54px;border-radius:4px;background-size:cover;background-position:center;border:1px solid var(--line)}
+.fpgrid h4{grid-column:1/-1;margin:6px 0 0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.fprow{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--muted)}
+.fprow input{width:34px;height:28px;padding:0;border:1px solid var(--line);border-radius:6px;vertical-align:middle;margin-left:6px}
 .hp{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}
 .row2 button.go:disabled{opacity:.6;cursor:wait}
 .notes li.sent .n{background:var(--line);color:var(--muted)}
@@ -181,6 +209,9 @@ body{background:var(--bg);color:var(--fg);font-family:var(--display);font-size:1
     <button id="vTour" title="A guided walk past the joinery">Tour</button>
   </div>
   <div class="hint" id="hint"></div>
+  <div class="loupe" id="loupe" hidden aria-hidden="true"></div>
+  <div class="prep" id="prep" hidden role="status" aria-live="polite"><div class="prepbox"><b>Getting your 3D preview ready</b>
+    <span id="prepMsg">Loading the finishes…</span><div class="prepbar"><i id="prepBar"></i></div></div></div>
   <div class="tourbar" id="tourbar" hidden role="group" aria-label="Tour">
     <button type="button" id="tPrev" aria-label="Previous stop">&lsaquo;</button>
     <button type="button" id="tPlay">Pause</button>
@@ -209,6 +240,13 @@ body{background:var(--bg);color:var(--fg);font-family:var(--display);font-size:1
     <div class="where" id="twhere"></div>
     <div class="specs" id="tspecs"></div>
     <div class="note" id="tnote" hidden></div>
+    <div class="acts"><button type="button" id="tHide">Hide part</button><button type="button" class="go" id="tFin">Change finish</button></div>
+  </section>
+  <section class="finpanel" id="finpanel" hidden aria-label="Change finish">
+    <div class="mh"><b id="fpTitle">Change finish</b><button type="button" id="fpDone">Done</button></div>
+    <div class="fpscope" id="fpScope" role="radiogroup" aria-label="Apply to"></div>
+    <div class="fpgrid" id="fpGrid"></div>
+    <div class="fprow"><label>Custom colour <input type="color" id="fpColor"></label><button type="button" id="fpReset">Back to original</button></div>
   </section>
   <section class="sheet" id="sheet" hidden aria-label="Show or hide">
     <div class="sheethead"><b id="sheetTitle">Show / hide</b><button type="button" id="sheetClose" aria-label="Close">Done</button></div>
@@ -235,6 +273,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--display);font-size:1
   <div class="name" id="pname">Your 3D preview</div>
   <div class="where" id="pwhere">Tap a door or drawer to open it. Press Comment, then tap a spot, to leave us a note.</div>
   <div class="specs" id="pspecs"><span class="disc">A guide only: colours, textures and small details may differ. The signed drawings are what is made.</span></div>
+  <div class="acts" id="cardActs" hidden><button type="button" id="aHidePart">Hide this part</button><button type="button" id="aHideCab">Hide cabinet</button><button type="button" class="go" id="aFin">Change finish</button></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -433,11 +472,31 @@ function textureAt(file, rx, ry){
   }
   return texCache[key];
 }
+let texPending = 0, texTotal = 0, prepDone = false;
+$('prep').hidden = false; $('prep').classList.remove('fade');
+// ready when every finish picture is in, then the graphics programs are built and one full frame is drawn
+// (a texture or shader arriving mid-tour is what made the view flash)
+function prepTick(){
+  if (prepDone) return;
+  const done = texTotal ? (texTotal - texPending) / texTotal : 1;
+  $('prepBar').style.width = Math.round(10 + 80 * done) + '%';
+  $('prepMsg').textContent = texPending ? 'Loading the finishes… ' + (texTotal - texPending) + ' / ' + texTotal : 'Setting up the view…';
+  if (texPending > 0 || !window.__cpBuilt) return;
+  prepDone = true;
+  setTimeout(() => {
+    try { renderer.compile(scene, camera); } catch (_) {}
+    shadowDirty = true; markDirty();
+    $('prepBar').style.width = '100%';
+    requestAnimationFrame(() => requestAnimationFrame(() => { $('prep').classList.add('fade'); setTimeout(() => { $('prep').hidden = true; }, 400); }));
+  }, 30);
+}
+setTimeout(() => { if (!prepDone){ texPending = 0; prepTick(); } }, 25000);   // never wait forever on a slow picture
 function texture(file){
   if (!texCache[file]){
-    texUsers[file] = [];
+    texUsers[file] = []; texPending++; texTotal++;
     const t = loader.load('textures/' + encodeURIComponent(file),
       img => {
+        texPending--; prepTick();
         // shrink big pictures (a 1500 x 2500 board photo is ~20 MB on the graphics chip) - looks the same on screen
         const w = img.width, h = img.height, k = TEX_MAX / Math.max(w, h);
         if (k < 1){
@@ -446,7 +505,7 @@ function texture(file){
         }
         (texVariants[file] || []).forEach(v => { v.image = t.image; v.needsUpdate = true; }); texUsers[file].forEach(m => { m.needsUpdate = true; }); markDirty(); },
       undefined,
-      () => texUsers[file].forEach(m => { m.map = null; m.color.copy(m.userData.fallback); m.userData.base.copy(m.userData.fallback); m.needsUpdate = true; }));
+      () => { texPending--; prepTick(); texUsers[file].forEach(m => { m.map = null; m.color.copy(m.userData.fallback); m.userData.base.copy(m.userData.fallback); m.needsUpdate = true; }); });
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = Math.min(PHONE ? 4 : 8, renderer.capabilities.getMaxAnisotropy());
     if ('encoding' in t) t.encoding = THREE.sRGBEncoding;
     texCache[file] = t;
@@ -624,7 +683,7 @@ function moveStep(){
     if (!moving && !exDirty) continue;
     // pocket doors (m.slide): first half of the move turns the door, second half slides it back into the pocket
     const turn = mv.m.slide != null ? ease(Math.min(1, mv.k * 2)) : mv.k;
-    if (mv.m.t === 'door') mv.pivot.quaternion.setFromAxisAngle(mv.axis, turn * (mv.m.a != null ? mv.m.a : 110) * Math.PI / 180);
+    if (mv.m.t === 'door') mv.pivot.quaternion.setFromAxisAngle(mv.axis, turn * doorAngle(mv) * Math.PI / 180);
     const off = mv.parentMv ? ZERO : (mv.front && mv.front.off) || ZERO;
     mv.pivot.position.copy(mv.P).addScaledVector(off, ex);
     if (mv.m.t === 'drawer') mv.pivot.position.addScaledVector(mv.n, mv.k * mv.travel);
@@ -686,6 +745,12 @@ for (const mv of movers){
   mv.travel = outer.length ? Math.min(mv.m.dist, Math.min(...outer) - 20) : mv.m.dist;
 }
 // tap a door/drawer: roll-outs behind closed doors open the doors first; closing a door closes what is behind it
+// doors open to 90 degrees at most, so they never swing into the next door or a panel; bifolds (a door with a
+// door hung off it, or hung off another) and pocket doors keep the angle CV gave them
+function doorAngle(mv){
+  const a = mv.m.a != null ? mv.m.a : 110;
+  return mv.parentMv || (mv.kids && mv.kids.length) || mv.m.slide != null ? a : Math.min(a, 90);
+}
 function toggleMover(mv){
   if (mv.m.fixed) return;                    // fixed blind panel: never opens
   if (mv.parentMv) return toggleMover(mv.parentMv);
@@ -706,7 +771,7 @@ try { emptyClosed = localStorage.getItem('cp-card-closed') === '1'; } catch (_) 
 function cardEmpty(){ return $('card').classList.contains('empty') && !$('card').dataset.msg; }
 function updateCard(){
   // nothing picked: no banner (the room is the point); a cabinet or part tapped brings it up
-  $('card').hidden = iso !== null || picking || !$('cpanel').hidden || !$('cedit').hidden || !$('tourbar').hidden || cardEmpty() || infoClosed;
+  $('card').hidden = iso !== null || picking || !$('cpanel').hidden || !$('cedit').hidden || !$('tourbar').hidden || !$('finpanel').hidden || cardEmpty() || infoClosed;
 }
 $('cardClose').onclick = () => {
   if (cardEmpty()){ emptyClosed = true; try { localStorage.setItem('cp-card-closed', '1'); } catch (_) {} }
@@ -767,7 +832,65 @@ const matName = mi => ((JOB.materials || [])[mi] || {}).name || 'Other finishes'
 function typeOf(g){ return (CABS[g] || {}).t || 'base'; }
 // ---- finish preview: swap a sheet material (or the benchtop) for another finish ----
 const PRESETS = [['White', '#f2f1ee'], ['Light grey', '#c9c8c4'], ['Mid grey', '#8e8d89'], ['Charcoal', '#3f4042'], ['Black', '#1c1c1e'],
-  ['Sand', '#d8cbb3'], ['Sage', '#a3ad97'], ['Navy', '#2f3b52'], ['Light timber', '#c9a57a'], ['Dark timber', '#6b4a32']];
+  ['Sand', '#d8cbb3'], ['Sage', '#a3ad97'], ['Navy', '#2f3b52'], ['Light timber', 'grain:light'], ['Dark timber', 'grain:dark']];
+// timber presets: a woodgrain picture drawn here (no download), tiled at about 600 x 1200 mm, grain up the board
+const GRAIN = {light: [205, 172, 128], dark: [92, 62, 42]}, grainCache = {};
+function grainCanvas(kind){
+  if (grainCache[kind]) return grainCache[kind];
+  const c = document.createElement('canvas'); c.width = 512; c.height = 1024;
+  const g = c.getContext('2d'), [r0, g0, b0] = GRAIN[kind] || GRAIN.light;
+  g.fillStyle = 'rgb(' + r0 + ',' + g0 + ',' + b0 + ')'; g.fillRect(0, 0, 512, 1024);
+  let seed = kind === 'dark' ? 7 : 3; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 260; i++){                 // broad colour bands
+    const x = rnd() * 512, w = 6 + rnd() * 30, a = 0.03 + rnd() * 0.06, dark = rnd() < 0.55;
+    g.fillStyle = dark ? 'rgba(60,35,15,' + a + ')' : 'rgba(255,235,205,' + a * 0.8 + ')';
+    for (const dx of [-512, 0, 512]) g.fillRect(x + dx, 0, w, 1024);
+  }
+  for (let i = 0; i < 1100; i++){                // fine grain lines, gently wavy
+    const x0 = rnd() * 512, w = 0.4 + rnd() * 1.6, a = 0.05 + rnd() * 0.14, dark = rnd() < 0.7, ph = rnd() * 6.28, amp = 1 + rnd() * 4;
+    g.strokeStyle = dark ? 'rgba(45,25,10,' + a + ')' : 'rgba(255,240,215,' + a * 0.6 + ')'; g.lineWidth = w;
+    for (const dx of [-512, 0, 512]){ g.beginPath(); for (let y = 0; y <= 1024; y += 16){ const x = x0 + dx + Math.sin(y / 1024 * 6.2832 * 2 + ph) * amp; y ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); }
+  }
+  return grainCache[kind] = c;
+}
+function grainTexture(kind, srcS){
+  const key = 'grain:' + kind + '|' + srcS.join(',');
+  if (!texCache[key]){
+    const t = new THREE.CanvasTexture(grainCanvas(kind)); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
+    t.anisotropy = Math.min(PHONE ? 4 : 8, renderer.capabilities.getMaxAnisotropy());
+    t.repeat.set(srcS[0] * 25.4 / 600, srcS[1] * 25.4 / 1200); texCache[key] = t;
+  }
+  return texCache[key];
+}
+// the library: board and stone finishes from every job published (textures/library.json, written by the sync)
+let LIB = [];
+const libOf = v => LIB.find(d => d.t === v.slice(4));     // 'lib:<picture file>'
+fetch('textures/library.json', {cache: 'no-cache'}).then(r => r.ok ? r.json() : []).then(l => { LIB = Array.isArray(l) ? l : [];
+  for (const [label, v] of Object.entries(finishChoice)) if (v.startsWith('lib:')) applyFinish(label, v);
+  applyObjFinishes(); }).catch(() => {});
+function finishSwatch(v){                        // css background for a choice
+  if (!v) return '';
+  if (v.startsWith('grain:')) return 'url(' + grainCanvas(v.slice(6)).toDataURL('image/jpeg', .7) + ')';
+  if (v.startsWith('tex:')){ const d = MATS[+v.slice(4)]; return d && d.t ? 'url("textures/' + encodeURIComponent(d.t) + '")' : ''; }
+  if (v.startsWith('lib:')) return 'url("textures/' + encodeURIComponent(v.slice(4)) + '")';
+  return v;
+}
+// one mesh to a finish choice: '' (CV's own), 'tex:<material>', 'lib:<library entry>', 'grain:light|dark', '#rrggbb'
+function finishMesh(m, choice){
+  const mat = m.material, ud = mat.userData;
+  if (!ud.orig) ud.orig = {map: mat.map, base: ud.base.clone()};
+  const src = MATS[m.userData.mi], srcS = src && src.t ? src.s : [24, 24];
+  if (!choice){ mat.map = ud.orig.map; ud.base.copy(ud.orig.base); }
+  else if (choice.startsWith('tex:') || choice.startsWith('lib:')){
+    const d = choice.startsWith('tex:') ? MATS[+choice.slice(4)] : libOf(choice);
+    if (!d || !d.t) return;
+    const ds = d.s || [24, 24];
+    mat.map = JOB.v >= 2 ? textureAt(d.t, srcS[0] / (ds[0] || 24), srcS[1] / (ds[1] || 24)) : textureAt(d.t, 1 / (ds[0] || 24), 1 / (ds[1] || 24));
+    texUsers[d.t].push(mat); ud.base.set(0xffffff);
+  } else if (choice.startsWith('grain:')){ mat.map = grainTexture(choice.slice(6), srcS); ud.base.set(0xffffff); }
+  else { mat.map = null; ud.base.set(choice); }
+  mat.color.copy(ud.base); mat.needsUpdate = true; shadowDirty = true; markDirty();
+}
 const allObjs = () => parts.concat(hardware);
 function finishGroups(){
   const groups = new Map();                     // label -> Set of material indexes
@@ -795,6 +918,8 @@ function finishOptions(){
   for (const [label, idx] of finishGroups()) for (const mi of idx){
     if (MATS[mi] && MATS[mi].t && !seen.has(label)){ seen.add(label); opts.push([label, 'tex:' + mi]); }
   }
+  const jobTex = new Set(MATS.map(d => d.t).filter(Boolean));
+  LIB.forEach(d => { if (!seen.has(d.name) && !jobTex.has(d.t)){ seen.add(d.name); opts.push([d.name, 'lib:' + d.t]); } });
   PRESETS.forEach(([n, c]) => opts.push([n, c]));
   return opts;
 }
@@ -803,21 +928,25 @@ const FIN_KEY = 'cp-finish-' + BOOT.id + '-' + BOOT.room;
 try { Object.assign(finishChoice, JSON.parse(localStorage.getItem(FIN_KEY) || '{}')); } catch (_) {}
 function applyFinish(label, choice){
   const idx = finishGroups().get(label); if (!idx) return;
-  for (const x of allObjs()) for (const m of x.meshes){
-    if (!idx.has(m.userData.mi)) continue;
-    const mat = m.material, ud = mat.userData;
-    if (!ud.orig) ud.orig = {map: mat.map, base: ud.base.clone()};
-    if (!choice){ mat.map = ud.orig.map; ud.base.copy(ud.orig.base); }
-    else if (choice.startsWith('tex:')){
-      const src = MATS[m.userData.mi], d = MATS[+choice.slice(4)];
-      const sx = (src && src.t ? src.s[0] : 24) / (d.s[0] || 24), sy = (src && src.t ? src.s[1] : 24) / (d.s[1] || 24);
-      const t = JOB.v >= 2 ? textureAt(d.t, sx, sy) : textureAt(d.t, 1 / (d.s[0] || 24), 1 / (d.s[1] || 24));
-      mat.map = t; texUsers[d.t].push(mat); ud.base.set(0xffffff);
-    } else { mat.map = null; ud.base.set(choice); }
-    mat.color.copy(ud.base); mat.needsUpdate = true;
-  }
+  for (const x of allObjs()) for (const m of x.meshes) if (idx.has(m.userData.mi)) finishMesh(m, choice);
   if (choice) finishChoice[label] = choice; else delete finishChoice[label];
   try { localStorage.setItem(FIN_KEY, JSON.stringify(finishChoice)); } catch (_) {}
+  applyObjFinishes();                            // a part or cabinet given its own finish keeps it
+}
+// finishes given to one part or one cabinet: {part index: {label, choice}}
+const objFinish = {};
+const OBJ_KEY = FIN_KEY + '-obj';
+try { Object.assign(objFinish, JSON.parse(localStorage.getItem(OBJ_KEY) || '{}')); } catch (_) {}
+function applyObjFinishes(){
+  for (const [i, f] of Object.entries(objFinish)){ const x = parts[+i]; if (x) for (const m of x.meshes) if (matName(m.userData.mi) === f.label) finishMesh(m, f.choice); }
+}
+function setObjFinish(list, label, choice){
+  for (const x of list){
+    const i = parts.indexOf(x); if (i < 0) continue;
+    for (const m of x.meshes) if (matName(m.userData.mi) === label) finishMesh(m, choice || finishChoice[label] || '');
+    if (choice) objFinish[i] = {label, choice}; else delete objFinish[i];
+  }
+  try { localStorage.setItem(OBJ_KEY, JSON.stringify(objFinish)); } catch (_) {}
 }
 function finishRow(label, opts){
   const el = document.createElement('div'); el.className = 'fin';
@@ -830,7 +959,8 @@ function finishRow(label, opts){
       const d = MATS[mi];
       if (d) sw.style.backgroundColor = '#' + d.c.getHexString();          // shows if the image is missing
       if (d && d.t) sw.style.backgroundImage = 'url("textures/' + encodeURIComponent(d.t) + '")';
-    } else sw.style.backgroundColor = v;
+    } else if (v.startsWith('lib:') || v.startsWith('grain:')) sw.style.backgroundImage = finishSwatch(v);
+    else sw.style.backgroundColor = v;
   };
   const name = document.createElement('span'); name.className = 'tl'; name.textContent = label;
   const sel = document.createElement('select'); sel.setAttribute('aria-label', 'Finish for ' + label);
@@ -850,6 +980,7 @@ function finishRow(label, opts){
   return el;
 }
 for (const [label, v] of Object.entries(finishChoice)) applyFinish(label, v);
+applyObjFinishes();
 // ---- cabinet number badges ----
 let showNums = false;
 function cabNoOf(g){
@@ -917,6 +1048,12 @@ function buildSheet(){
   const sec = t => { const h = document.createElement('h3'); h.textContent = t; body.appendChild(h); };
   if (iso === null){
     $('sheetTitle').textContent = 'Show / hide';
+    if (hiddenParts.size){
+      const b = document.createElement('div'); b.className = 'sheetbtns';
+      b.innerHTML = '<button type="button">Show hidden (' + hiddenParts.size + ')</button>';
+      b.querySelector('button').onclick = () => { hiddenParts.clear(); applyVisibility(); shadowDirty = true; buildSheet(); };
+      body.appendChild(b);
+    }
     sec('Cabinets');
     const counts = {}; CABS.forEach(c => counts[c.t] = (counts[c.t] || 0) + 1);
     hardware.forEach(h => { if (h.p.k === 'panel' && h.p.g < 0) counts.panel = (counts.panel || 0) + 1; });
@@ -1028,7 +1165,7 @@ function reframe(){
 }
 
 function show(x){
-  sel = x || null; selCab = null; $('ptag').textContent = 'CAB';
+  sel = x || null; selCab = null; $('ptag').textContent = 'CAB'; $('cardActs').hidden = true;
   const card = $('card'); delete card.dataset.msg;
   if (!sel){
     card.classList.add('empty'); $('pid').textContent = '–';
@@ -1061,8 +1198,75 @@ function showCab(g){
   $('pname').textContent = c.n || 'Cabinet';
   $('pwhere').textContent = (TYPE_NAMES[c.t] || 'Cabinet').replace(/s( |$)/, '$1') + ' · double-tap to see it on its own';
   $('pspecs').innerHTML = c.whd ? '<span>W <b>' + fmt(c.whd[0]) + '</b> · H <b>' + fmt(c.whd[1]) + '</b> · D <b>' + fmt(c.whd[2]) + '</b> mm</span>' : '';
+  $('cardActs').hidden = false;
+  $('aHidePart').hidden = !(tappedPart && tappedPart.p.g === g);
+  if (tappedPart && tappedPart.p.g === g) $('aHidePart').textContent = 'Hide ' + partLabel(tappedPart).toLowerCase();
   updateCard(); paint();
 }
+// ---- hide a part or cabinet, or try another finish on it, straight from the tap ----
+let tappedPart = null, finTarget = null;
+function mainLabel(x){                           // the finish a part shows most of
+  const area = {};
+  for (const m of x.meshes){ const s = m.geometry.boundingBox.getSize(new THREE.Vector3()), a = s.x * s.y + s.y * s.z + s.x * s.z; area[matName(m.userData.mi)] = (area[matName(m.userData.mi)] || 0) + a; }
+  return Object.keys(area).sort((a, b) => area[b] - area[a])[0];
+}
+function hideObjs(list, what){
+  list.forEach(o => hiddenParts.add(o)); applyVisibility(); shadowDirty = true; markDirty();
+  $('hint').textContent = what + ' hidden · Show / hide → "Show hidden" brings it back'; $('hint').hidden = false;
+}
+$('aHideCab').onclick = () => { const g = selCab; if (g === null) return; showCab(null);
+  hideObjs(parts.concat(hardware).filter(o => o.p.g === g), 'Cabinet ' + (cabNoOf(g) || '')); };
+$('aHidePart').onclick = () => { const x = tappedPart; if (!x) return; showCab(null); hideObjs([x], partLabel(x)); };
+$('tHide').onclick = () => { const x = tipSel; if (!x) return; showTip(null); hideObjs([x], partLabel(x)); };
+$('aFin').onclick = () => { if (selCab !== null && tappedPart) openFinish({x: tappedPart, g: selCab}); };
+$('tFin').onclick = () => { if (tipSel) openFinish({x: tipSel, g: tipSel.p.g, part: true}); };
+function openFinish(t){
+  const label = mainLabel(t.x);
+  finTarget = Object.assign(t, {label, scope: t.part ? 'part' : 'cab'});
+  $('card').hidden = true; $('tip').hidden = true; $('finpanel').hidden = false;
+  buildFinish();
+}
+function finScopeList(){
+  const t = finTarget;
+  return t.scope === 'part' ? [t.x] : t.scope === 'cab' ? parts.filter(x => x.p.g === t.g) : null;
+}
+function currentFinish(){
+  const t = finTarget, i = parts.indexOf(t.x);
+  return (objFinish[i] && objFinish[i].label === t.label ? objFinish[i].choice : '') || finishChoice[t.label] || '';
+}
+function chooseFinish(v){
+  const t = finTarget, list = finScopeList();
+  if (list) setObjFinish(list, t.label, v);
+  else { applyFinish(t.label, v);                  // everywhere: this finish on the whole job (cabinet choices cleared)
+    for (const [i, f] of Object.entries(objFinish)) if (f.label === t.label) delete objFinish[i];
+    try { localStorage.setItem(OBJ_KEY, JSON.stringify(objFinish)); } catch (_) {}
+    applyFinish(t.label, v); }
+  paint(); buildFinish();
+}
+function buildFinish(){
+  const t = finTarget, cabName = cabNoOf(t.g) ? 'Cab ' + cabNoOf(t.g) : 'This cabinet';
+  $('fpTitle').textContent = 'Finish · ' + t.label;
+  const scopes = [['part', 'This ' + partLabel(t.x).toLowerCase()], ['cab', cabName], ['all', 'Everywhere']].filter(([k]) => t.part || k !== 'part');
+  const sc = $('fpScope'); sc.innerHTML = '';
+  for (const [k, n] of scopes){ const b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', t.scope === k); b.textContent = n; b.onclick = () => { t.scope = k; buildFinish(); }; sc.appendChild(b); }
+  const cur = currentFinish(), grid = $('fpGrid'); grid.innerHTML = '';
+  const tile = (name, v, bg) => { const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-pressed', cur === v);
+    const i = document.createElement('i'); if (bg) (bg.startsWith('url') ? i.style.backgroundImage = bg : i.style.backgroundColor = bg);
+    b.append(i, document.createTextNode(name)); b.onclick = () => chooseFinish(v); grid.appendChild(b); };
+  const head = n => { const h = document.createElement('h4'); h.textContent = n; grid.appendChild(h); };
+  const orig = MATS[[...(finishGroups().get(t.label) || [])][0]];
+  tile('Original', '', orig ? (orig.t ? 'url("textures/' + encodeURIComponent(orig.t) + '")' : '#' + orig.c.getHexString()) : '#ccc');
+  const opts = finishOptions().slice(1);
+  const own = opts.filter(([, v]) => v.startsWith('tex:')), lib = opts.filter(([, v]) => v.startsWith('lib:')), col = opts.filter(([, v]) => !v.startsWith('tex:') && !v.startsWith('lib:'));
+  if (own.length){ head('In this job'); own.forEach(([n, v]) => tile(n, v, finishSwatch(v))); }
+  if (lib.length){ head('From our library'); lib.forEach(([n, v]) => tile(n, v, finishSwatch(v))); }
+  head('Colours & timber'); col.forEach(([n, v]) => tile(n, v, finishSwatch(v)));
+  $('fpColor').value = /^#/.test(cur) ? cur : '#c9c8c4';
+}
+$('fpColor').oninput = () => chooseFinish($('fpColor').value);
+$('fpReset').onclick = () => chooseFinish('');
+$('fpDone').onclick = () => { $('finpanel').hidden = true; finTarget = null; updateCard(); if (tipSel) $('tip').hidden = false; };
 
 
 function setView(v){ view = v; $('vCab').setAttribute('aria-pressed', v === 'cab'); $('vJob').setAttribute('aria-pressed', v === 'job'); reframe(); }
@@ -1155,13 +1359,13 @@ function singleTap(x){
   }
   if (!x){ if (selCab !== null) showCab(null); return; }
   if (x.mover && !x.mover.m.fixed){ toggleMover(x.mover); return; }   // solid or see-through: doors open
-  if (x.p.g !== undefined && x.p.g >= 0) showCab(selCab === x.p.g ? null : x.p.g);
+  if (x.p.g !== undefined && x.p.g >= 0){ tappedPart = x; showCab(selCab === x.p.g ? null : x.p.g); }
 }
 renderer.domElement.addEventListener('pointerdown', e => down = [e.clientX, e.clientY]);
 renderer.domElement.addEventListener('pointerup', e => {
   if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
   if (commenting){ if (!pending) startNote(e); return; }
-  if (measuring){ measureTap(e); return; }
+  if (measuring){ if (e.pointerType !== 'touch') measureTap(e); return; }   // (touch: placed by the drag-and-lift below)
   const now = performance.now(), x = pick(e);
   if (walking){ walkTap(e, x); return; }
   if (lastTap && now - lastTap.t < 330 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30){
@@ -1772,6 +1976,43 @@ let sectionOn = false;
   THREE.Raycaster.prototype.intersectObject = function(o, r, out){ return i1.call(this, o, r, out).filter(keep); };
 }
 const secLines = new THREE.Group(); scene.add(secLines);
+// solid cut faces: where a cut goes through a board, fill it in (stencil caps) instead of showing a hollow shell.
+// For each active plane: every face of the boards beyond the cut flips one stencil bit; along a line of sight that
+// starts inside a board the count is odd. Then the plane is drawn only there. (Counting faces, not front minus back:
+// CV turns some faces inside out.) Boards and walls only (hardware isn't always closed).
+const capObjs = parts.concat(walls).flatMap(x => x.meshes);
+capObjs.forEach(m => m.layers.enable(1));
+const capColor = new THREE.Color(0xb9ad9c);            // cut face: flat warm grey, like a drawing's section fill
+const caps = CLIP.map((pl, i) => {
+  const flip = new THREE.MeshBasicMaterial({side: THREE.DoubleSide, colorWrite: false, depthWrite: false, depthTest: false, clippingPlanes: [pl],
+    stencilWrite: true, stencilWriteMask: 1, stencilFunc: THREE.AlwaysStencilFunc,
+    stencilFail: THREE.InvertStencilOp, stencilZFail: THREE.InvertStencilOp, stencilZPass: THREE.InvertStencilOp});
+  const capMat = new THREE.MeshBasicMaterial({color: capColor, side: THREE.DoubleSide, toneMapped: false,
+    clippingPlanes: CLIP.filter((_, k) => k !== i), stencilWrite: true, stencilRef: 0, stencilFuncMask: 1, stencilFunc: THREE.NotEqualStencilFunc,
+    stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1});
+  const size = secBox.getSize(new THREE.Vector3()).length() * 2 + 2000;
+  const cap = new THREE.Mesh(new THREE.PlaneGeometry(size, size), capMat);
+  const capScene = new THREE.Scene(); capScene.add(cap);
+  return {flip, cap, capScene, pl};
+});
+function drawCaps(){
+  if (!sectionOn) return;
+  const ac = renderer.autoClear, mask = camera.layers.mask, ctr = secBox.getCenter(new THREE.Vector3());
+  renderer.autoClear = false;
+  for (const c of caps){
+    if (c.pl.constant > 1e6) continue;
+    c.cap.position.copy(ctr).addScaledVector(c.pl.normal, -c.pl.distanceToPoint(ctr));   // the plane, centred on the job
+    c.cap.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), c.pl.normal);
+    renderer.clearStencil();
+    camera.layers.set(1);
+    const bg = scene.background; scene.background = null;     // (a colour background would clear the picture)
+    scene.overrideMaterial = c.flip; renderer.render(scene, camera);
+    scene.overrideMaterial = null; camera.layers.mask = mask; scene.background = bg;
+    renderer.render(c.capScene, camera);
+  }
+  renderer.autoClear = ac;
+}
 function applySection(){
   sectionOn = false;
   for (const k of Object.keys(SEC)){
@@ -1907,9 +2148,34 @@ function drawMeasures(){
   $('mUndo').disabled = !measures.length && !mFirst; $('mClear').disabled = !measures.length && !mFirst;
 }
 function hideHover(){ for (const k in hoverMark) hoverMark[k].visible = false; rubber.visible = false; }
+const LOUPE = 150, LOUPE_ZOOM = 4;
+const loupe = {on: false, x: 0, y: 0, fx: 0, fy: 0};
+function setLoupe(e, s){
+  const r = renderer.domElement.getBoundingClientRect();
+  loupe.fx = e.clientX - r.left; loupe.fy = e.clientY - r.top;           // finger / pointer
+  if (s){ const q = toScreen(s.p); loupe.x = q[0]; loupe.y = q[1]; } else { loupe.x = loupe.fx; loupe.y = loupe.fy; }
+  loupe.on = true; $('loupe').hidden = false; markDirty();
+}
+function hideLoupe(){ if (loupe.on){ loupe.on = false; $('loupe').hidden = true; markDirty(); } }
+// drawn into a corner of the same canvas: the region round the point, LOUPE_ZOOM times bigger
+function drawLoupe(){
+  if (!loupe.on) return;
+  const W = renderer.domElement.clientWidth, H = renderer.domElement.clientHeight, S = LOUPE;
+  let lx = TOUCH ? loupe.fx - S / 2 : loupe.fx + 28, ly = TOUCH ? loupe.fy - S - 80 : loupe.fy - S - 28;
+  if (ly < 4) ly = TOUCH ? Math.min(H - S - 4, loupe.fy + 80) : loupe.fy + 28;
+  lx = Math.min(Math.max(4, lx), W - S - 4); ly = Math.min(Math.max(4, ly), H - S - 4);
+  const el = $('loupe'); el.style.transform = 'translate(' + (lx - 3) + 'px,' + (ly - 3) + 'px)';
+  const v = S / LOUPE_ZOOM;
+  camera.setViewOffset(W, H, loupe.x - v / 2, loupe.y - v / 2, v, v);
+  renderer.setScissorTest(true); renderer.setScissor(lx, H - ly - S, S, S); renderer.setViewport(lx, H - ly - S, S, S);
+  const spr = []; scene.traverse(o => { if (o.isSprite && o.visible){ spr.push(o); o.scale.multiplyScalar(1 / LOUPE_ZOOM); } });   // markers keep their size
+  renderer.render(scene, camera); drawCaps();
+  spr.forEach(o => o.scale.multiplyScalar(LOUPE_ZOOM));
+  camera.clearViewOffset(); renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
+}
 function measureHover(e){
   markDirty();
-  const s = snapAt(e.clientX, e.clientY); mHover = s; hideHover();
+  const s = snapAt(e.clientX, e.clientY); mHover = s; hideHover(); setLoupe(e, s);
   if (!s){ $('mSnap').textContent = mFirst ? 'Pick the second point on the model' : 'Point at the model'; return; }
   const m = hoverMark[s.kind]; m.position.copy(s.p); m.visible = true;
   if (mFirst){
@@ -1935,13 +2201,35 @@ renderer.domElement.addEventListener('pointermove', e => {
   if (!hoverQueued) requestAnimationFrame(() => { const ev = hoverQueued; hoverQueued = null; if (measuring) measureHover(ev); });
   hoverQueued = e;
 });
-renderer.domElement.addEventListener('pointerleave', () => { if (measuring) hideHover(); });
+renderer.domElement.addEventListener('pointerleave', () => { if (measuring){ hideHover(); hideLoupe(); } });
+// touch: drag a finger to the point (the magnifier shows above it), lift to place it; two fingers still pan and zoom
+const touches = new Set(); let touchMulti = false, touchLast = null;
+renderer.domElement.addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'touch') return;
+  touches.add(e.pointerId); if (touches.size > 1){ touchMulti = true; hideLoupe(); hideHover(); }
+  if (measuring && touches.size === 1){ touchMulti = false; touchLast = e; measureHover(e); }
+});
+renderer.domElement.addEventListener('pointermove', e => {
+  if (e.pointerType !== 'touch' || !measuring || touchMulti || !touches.has(e.pointerId)) return;
+  touchLast = e;
+  if (!hoverQueued) requestAnimationFrame(() => { const ev = hoverQueued; hoverQueued = null; if (measuring && !touchMulti) measureHover(ev); });
+  hoverQueued = e;
+});
+const touchEnd = e => {
+  if (e.pointerType !== 'touch') return;
+  const was = touches.has(e.pointerId); touches.delete(e.pointerId);
+  if (was && measuring && !touchMulti && touches.size === 0 && e.type === 'pointerup') measureTap(touchLast || e);
+  if (!touches.size){ touchMulti = false; hideLoupe(); }
+};
+renderer.domElement.addEventListener('pointerup', touchEnd);
+renderer.domElement.addEventListener('pointercancel', touchEnd);
 function setMeasuring(on){
   measuring = on; $('vMeasure').setAttribute('aria-pressed', on); $('mpanel').hidden = !on;
   if (on){ if (commenting) setCommenting(false); openSheet(false); openSection(false); if (picking) setPicking(false); $('card').hidden = true; $('tip').hidden = true;
-    $('mSnap').textContent = TOUCH ? 'Tap two points · it snaps to corners, edge middles and edges · zoom in for small parts'
+    $('mSnap').textContent = TOUCH ? 'Drag a finger to a point and lift to place it (two fingers move the view) · snaps to corners and edges'
       : 'Click two points · snaps to corners, edge middles and edges · Shift for a free (angled) line · zoom in for small parts'; }
-  else { mFirst = null; hideHover(); hintText(); updateCard(); }
+  else { mFirst = null; hideHover(); hideLoupe(); hintText(); updateCard(); }
+  if (TOUCH) controls.enableRotate = !on;          // one finger picks points; two fingers still move the view
   $('hint').hidden = on; drawMeasures();
 }
 $('vMeasure').onclick = () => setMeasuring(!measuring);
@@ -1982,7 +2270,7 @@ if (!PHONE && THREE.SSAOPass && THREE.SimplexNoise){
 function aoSize(){ if (ao){ const w = renderer.domElement.width, h = renderer.domElement.height; const k = renderer.getPixelRatio() >= 1.5 ? 2 : 1; ao.setSize(Math.max(2, Math.round(w / k)), Math.max(2, Math.round(h / k))); } }
 function drawAO(){
   const u = ao.ssaoMaterial.uniforms, far = camera.position.distanceTo(controls.target);
-  u.aoStrength.value = THREE.MathUtils.clamp((9000 - far) / 5000, 0, 1);
+  u.aoStrength.value = THREE.MathUtils.clamp((9000 - far) / 5000, 0, 1) * aoFade;
   if (u.aoStrength.value < 0.05) return false;
   u.cameraNear.value = camera.near; u.cameraFar.value = camera.far;
   u.cameraProjectionMatrix.value.copy(camera.projectionMatrix); u.cameraInverseProjectionMatrix.value.copy(camera.projectionMatrixInverse);
@@ -1998,7 +2286,8 @@ function drawAO(){
 }
 // Moving (orbit, glide, doors): plain frames, fast. Once it settles: one frame with the ambient occlusion.
 // Nothing changing: nothing drawn (the last picture stays up).
-let frameSig = '', aoDue = false;
+let frameSig = '', aoDue = false, aoMode = 'always', aoFade = 1, lastT = 0;
+const gaps = [];
 for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'input', 'click', 'touchstart', 'touchmove'])
   addEventListener(ev, () => markDirty(250), {passive: true, capture: true});
 function render(t){
@@ -2007,12 +2296,27 @@ function render(t){
   const moving = !!glide || ex !== exTarget || movers.some(m => m.moved);
   const changed = sig !== frameSig || moving || forceFrame || t < busyUntil;
   frameSig = sig; forceFrame = false;
-  if (changed){ renderer.render(scene, camera); aoDue = !!ao; return; }
-  if (aoDue){ aoDue = false; renderer.render(scene, camera); if (ao) drawAO(); }
+  if (changed){
+    // how fast is this computer while things move? well under 30 frames a second: occlusion only once settled
+    if (lastT && t - lastT < 120){ gaps.push(t - lastT); if (gaps.length > 40) gaps.shift();
+      if (aoMode === 'always' && gaps.length >= 30 && gaps.reduce((a, b) => a + b, 0) / gaps.length > 34){ aoMode = 'settle'; console.log('occlusion: only when still'); } }
+    lastT = t;
+    renderer.render(scene, camera); drawCaps();
+    if (ao && aoMode === 'always'){ aoFade = 1; drawAO(); }
+    else { aoFade = 0; aoDue = !!ao; }
+    drawLoupe();
+    return;
+  }
+  lastT = 0;
+  if (aoDue){                                    // settled: fade the occlusion in over a few frames
+    aoFade = Math.min(1, aoFade + 0.2); aoDue = aoFade < 1; forceFrame = false;
+    renderer.render(scene, camera); drawCaps(); if (ao) drawAO(); drawLoupe();
+  }
 }
 new ResizeObserver(() => { aoSize(); markDirty(); }).observe(stage); aoSize();
 
 resize(); hintText(); show(null); drawPins(); openView();
+window.__cpBuilt = true; prepTick();
 (function loop(t){
   if (sel) for (const m of sel.meshes) m.material.emissiveIntensity = .35;   // (steady: a pulse would keep redrawing)
   glideStep(); moveStep(); controls.update(); holdEye(); wallStep();
