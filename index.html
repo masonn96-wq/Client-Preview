@@ -112,6 +112,12 @@ body{background:var(--bg);color:var(--fg);font-family:var(--display);font-size:1
 .cpanel .empty{color:var(--muted);font-size:14px;margin:0}
 .cpanel .msg{color:var(--muted);font-size:13px;margin:0}
 .disc{font-size:12px;color:var(--muted)}
+/* walk / tour */
+.views button#vWalk,.views button#vTour{border-color:var(--hi)}
+.tourbar{position:absolute;left:50%;transform:translateX(-50%);bottom:14px;z-index:3;display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 8px 30px rgba(0,0,0,.18)}
+.tourbar button{font:600 15px var(--display);min-width:44px;min-height:40px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+.tourbar button#tPlay{background:var(--hi);border-color:var(--hi);color:var(--hi-ink);min-width:76px}
+.tourbar span{font:500 13px var(--mono);color:var(--muted);padding:0 6px;white-space:nowrap}
 .hp{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}
 .row2 button.go:disabled{opacity:.6;cursor:wait}
 .notes li.sent .n{background:var(--line);color:var(--muted)}
@@ -148,8 +154,17 @@ body{background:var(--bg);color:var(--fg);font-family:var(--display);font-size:1
     <button id="vNext" hidden title="Next cabinet">Next &rsaquo;</button>
     <button id="vBack" hidden>Back to room</button>
     <button id="vLayers" aria-pressed="false" title="Show or hide cabinets and try other finishes">Show / hide</button>
+    <button id="vWalk" aria-pressed="false" title="Stand in the room at eye height">Walk</button>
+    <button id="vTour" title="A guided walk past the joinery">Tour</button>
   </div>
   <div class="hint" id="hint"></div>
+  <div class="tourbar" id="tourbar" hidden role="group" aria-label="Tour">
+    <button type="button" id="tPrev" aria-label="Previous stop">&lsaquo;</button>
+    <button type="button" id="tPlay">Pause</button>
+    <button type="button" id="tNext" aria-label="Next stop">&rsaquo;</button>
+    <span id="tPos" aria-live="polite"></span>
+    <button type="button" id="tExit">Done</button>
+  </div>
   <section class="tip" id="tip" hidden aria-live="polite">
     <div class="tag">CAB<span id="tid">–</span></div>
     <div class="name" id="tname"></div>
@@ -429,12 +444,12 @@ function makeObject(rec, isPart){
 }
 const parts = JOB.parts.map(p => makeObject(p, true));
 const hardware = JOB.context.map(c => makeObject(c, false));
-// walls: plain light grey; they fade out when the camera is behind them so they never block the view
+// walls keep their CV finish (paint, tiles, brick - part of what the client is approving); they fade out when the
+// camera is behind them so they never block the view. (Part Finder greys them: the workshop only needs the joinery.)
 const jobCentre = new THREE.Box3(); parts.forEach(x => jobCentre.union(x.box));
 const JC = jobCentre.getCenter(new THREE.Vector3());
 const walls = hardware.filter(h => h.p.k === 'wall');
 for (const w of walls){
-  for (const m of w.meshes){ m.material.map = null; m.material.color.set(0xe4e1db); m.material.userData.base = m.material.color.clone(); m.material.needsUpdate = true; }
   const s = w.box.getSize(new THREE.Vector3()), c = w.box.getCenter(new THREE.Vector3());
   const n = s.x < s.z ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
   if (n.dot(JC.clone().sub(c)) < 0) n.negate();          // points into the room
@@ -573,7 +588,7 @@ let emptyClosed = false, infoClosed = false;
 try { emptyClosed = localStorage.getItem('cp-card-closed') === '1'; } catch (_) {}
 function cardEmpty(){ return $('card').classList.contains('empty') && !$('card').dataset.msg; }
 function updateCard(){
-  $('card').hidden = iso !== null || picking || !$('cpanel').hidden || !$('cedit').hidden || (cardEmpty() ? emptyClosed : infoClosed);
+  $('card').hidden = iso !== null || picking || !$('cpanel').hidden || !$('cedit').hidden || !$('tourbar').hidden || (cardEmpty() ? emptyClosed : infoClosed);
 }
 $('cardClose').onclick = () => {
   if (cardEmpty()){ emptyClosed = true; try { localStorage.setItem('cp-card-closed', '1'); } catch (_) {} }
@@ -870,6 +885,7 @@ function jobFront(){
   return c.addScaledVector(n.normalize(), 1000);
 }
 function reframe(){
+  if ($('vWalk').getAttribute('aria-pressed') === 'true') return;   // walking: the camera is yours
   if (iso !== null){
     const cab = parts.filter(x => isoGs.has(x.p.g));
     // frame the cabinet's own body: long shared parts it happens to own (a rangehood's 2.7 m underpanel)
@@ -932,11 +948,14 @@ function showCab(g){
 
 function setView(v){ view = v; $('vCab').setAttribute('aria-pressed', v === 'cab'); $('vJob').setAttribute('aria-pressed', v === 'job'); reframe(); }
 function hintText(){
-  $('hint').textContent = picking ? 'Tap cabinets to add or remove them, then press Isolate'
+  $('hint').textContent = $('vWalk').getAttribute('aria-pressed') === 'true'
+      ? 'Drag to look around · tap the floor to walk there (or the mouse wheel) · tap a door or drawer to open it'
+    : picking ? 'Tap cabinets to add or remove them, then press Isolate'
     : iso !== null ? 'Tap a part for its info (doors open too) · double-tap to go back'
     : 'Tap a door or drawer to open it · tap a cabinet for its size · double-tap to see it on its own';
 }
 function isolate(g){
+  if (g !== null && $('vWalk').getAttribute('aria-pressed') === 'true') exitWalk(false);
   // g: one cabinet, a list of cabinets, or null for the whole job
   const gs = g === null ? [] : Array.isArray(g) ? g : [g];
   if (!gs.length) g = null;
@@ -961,7 +980,7 @@ function isolate(g){
   isoSolid = true; $('vSee').setAttribute('aria-pressed', false);
   $('vSolid').hidden = on;
   $('vExplode').hidden = !on; $('vBack').hidden = !on; $('vPrev').hidden = !on || gs.length > 1; $('vNext').hidden = !on || gs.length > 1;
-  $('vMulti').hidden = on;
+  $('vMulti').hidden = on; $('vWalk').hidden = on; $('vTour').hidden = on;
   $('vExplode').setAttribute('aria-pressed', false); $('vExplode').textContent = 'Explode';
   $('vDims').hidden = !on; $('vDims').setAttribute('aria-pressed', dimsOn);
 
@@ -1024,6 +1043,7 @@ renderer.domElement.addEventListener('pointerup', e => {
   if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
   if (commenting){ if (!pending) startNote(e); return; }
   const now = performance.now(), x = pick(e);
+  if (walking){ walkTap(e, x); return; }
   if (lastTap && now - lastTap.t < 330 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30){
     clearTimeout(tapTimer); lastTap = null;
     if (picking){ singleTap(x); return; }
@@ -1163,11 +1183,281 @@ $('vDims').onclick = () => { dimsOn = !dimsOn; $('vDims').setAttribute('aria-pre
 
 function resize(){
   const w = stage.clientWidth, h = stage.clientHeight;
-  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false); camera.aspect = w / h;
+  if ($('vWalk').getAttribute('aria-pressed') === 'true') camera.fov = walkFov();
+  camera.updateProjectionMatrix();
 }
 new ResizeObserver(() => { resize(); }).observe(stage);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', paint);
 new MutationObserver(paint).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
+
+// ---- walk and tour: see the room at eye height. Nothing is set up per job: the floor, the room's walls and the
+// way the doors face (or, with none, which side of each cabinet faces the room) give the start point and the stops.
+const EYE = 1600, STEP_SPEED = 1400;            // mm above the floor; mm per second when walking
+const LOOK_R = 60;                               // look-around: the orbit target sits just in front of the eye
+const roomItems = hardware.filter(h => h.p.k === 'room' || h.p.k === 'wall');
+const floorY = (() => {
+  const floors = hardware.filter(h => h.p.k === 'room').map(h => h.box).filter(b => b.max.y - b.min.y < 120 && (b.max.x - b.min.x) * (b.max.z - b.min.z) > 1e6);
+  if (floors.length) return floors.map(b => b.max.y).sort((a, b) => a - b)[Math.floor(floors.length / 2)];
+  return boxOf(parts).min.y;
+})();
+// where people can stand: inside the walls (or around the joinery when the room isn't drawn), off the cabinets
+const roomBox = (() => {
+  const b = boxOf(roomItems.length ? roomItems : parts).clone();
+  const j = boxOf(parts);
+  if (b.max.x - b.min.x < 1500 || b.max.z - b.min.z < 1500 || !roomItems.length) b.union(j.clone().expandByVector(new THREE.Vector3(2500, 0, 2500)));
+  b.min.x += 300; b.min.z += 300; b.max.x -= 300; b.max.z -= 300;
+  return b;
+})();
+const cabGroups = [...new Set(parts.map(x => x.p.g))].filter(g => g >= 0).map(g => {
+  const cab = parts.filter(x => x.p.g === g), b = boxOf(cab);
+  return {g, cab, box: b, kind: (CABS[g] || {}).t || 'base'};
+}).filter(c => c.box.max.y - floorY > 150);       // kicks and plinths aren't in the way
+// walls are in the way too (a cellar inside a room: its brickwork); and a spot must see what it's looking at
+const wallBoxes = walls.map(w => w.box).filter(b => b.min.y - floorY < 1300),   // (a lintel above head height isn't)
+      wallMeshes = walls.flatMap(w => w.meshes), sight = new THREE.Raycaster();
+function blocked(eye, at){
+  const d = at.clone().sub(eye), len = d.length(); if (len < 1) return false;
+  sight.set(eye, d.normalize()); sight.far = len - 60;
+  return sight.intersectObjects(wallMeshes).length > 0;
+}
+function freeSpot(p){
+  const q = p.clone();
+  for (let pass = 0; pass < 3; pass++){
+    q.x = Math.min(Math.max(q.x, roomBox.min.x), roomBox.max.x); q.z = Math.min(Math.max(q.z, roomBox.min.z), roomBox.max.z);
+    const boxes = cabGroups.filter(c => c.box.min.y - floorY <= 1300).map(c => [c.box, 320])   // overheads: walk under them
+      .concat(wallBoxes.map(b => [b, 250]));
+    for (const [b, m] of boxes){                // inside a cabinet or wall (with room to stand): step out the shortest way
+      if (q.x > b.min.x - m && q.x < b.max.x + m && q.z > b.min.z - m && q.z < b.max.z + m){
+        const out = [[b.min.x - m - q.x, 'x'], [b.max.x + m - q.x, 'x'], [b.min.z - m - q.z, 'z'], [b.max.z + m - q.z, 'z']];
+        const [d, a] = out.reduce((best, o) => Math.abs(o[0]) < Math.abs(best[0]) ? o : best);
+        q[a] += d;
+      }
+    }
+  }
+  q.y = floorY + EYE;
+  return q;
+}
+// the way a cabinet faces: its doors and drawers, else from the cabinet toward the open floor (squared to the room)
+function facing(c){
+  const n = new THREE.Vector3();
+  for (const x of c.cab) if (x.mover && !x.mover.m.inner) n.add(x.mover.n);
+  n.y = 0;
+  if (n.length() < 0.1){
+    const ctr = c.box.getCenter(new THREE.Vector3()), room = roomBox.getCenter(new THREE.Vector3());
+    n.set(room.x - ctr.x, 0, room.z - ctr.z);
+    if (n.length() < 1) n.set(0, 0, 1);
+  }
+  return Math.abs(n.x) > Math.abs(n.z) ? new THREE.Vector3(Math.sign(n.x), 0, 0) : new THREE.Vector3(0, 0, Math.sign(n.z));
+}
+// tour stops: cabinets side by side facing the same way make a run; a run is seen in pieces about 1.8 m wide
+function tourStops(){
+  const items = cabGroups.filter(c => c.kind !== 'toe' && c.kind !== 'panel').map(c => {
+    const n = facing(c), ax = Math.abs(n.x) > 0.5 ? 'z' : 'x', front = n.x + n.z > 0 ? c.box.max[ax === 'z' ? 'x' : 'z'] : c.box.min[ax === 'z' ? 'x' : 'z'];
+    return {c, n, ax, front, lo: c.box.min[ax], hi: c.box.max[ax]};
+  });
+  const runs = [];
+  for (const it of items.sort((a, b) => a.lo - b.lo)){
+    const run = runs.find(r => r.n.equals(it.n) && Math.abs(r.front - it.front) < 450 && it.lo - r.hi < 400);
+    if (run){ run.items.push(it); run.hi = Math.max(run.hi, it.hi); run.front = it.n.x + it.n.z > 0 ? Math.max(run.front, it.front) : Math.min(run.front, it.front); }
+    else runs.push({n: it.n, ax: it.ax, front: it.front, lo: it.lo, hi: it.hi, items: [it]});
+  }
+  // stops along a run, seen from the side `n`; each must really see some of its cabinets (front-on, nothing between)
+  function runStops(r, n, front){
+    const out = [], len = r.hi - r.lo, pieces = Math.max(1, Math.round(len / 1800));
+    for (let k = 0; k < pieces; k++){
+      const a = r.lo + len * k / pieces, b = r.lo + len * (k + 1) / pieces, mid = (a + b) / 2;
+      const cabs = r.items.filter(it => it.hi > a && it.lo < b).map(it => Object.assign(it.c, {n,
+        size: Math.max(it.c.box.max.x - it.c.box.min.x, it.c.box.max.z - it.c.box.min.z)}));
+      const look = cabs.reduce((u, c) => u.union(c.box), new THREE.Box3()).getCenter(new THREE.Vector3());
+      look[r.ax] = mid;
+      look.y = Math.min(Math.max(look.y, floorY + 900), floorY + 1450);
+      for (const back of [Math.min(Math.max((b - a) * 0.95 + 500, 1300), 2300), 1500, 1100, 800]){
+        const e = new THREE.Vector3(); e[r.ax] = mid; e[r.ax === 'z' ? 'x' : 'z'] = front;
+        const eye = freeSpot(e.addScaledVector(n, back));
+        if (seen(eye, cabs) > 0){ out.push({eye, look}); break; }    // too far / a wall between: step in closer
+      }
+    }
+    return out;
+  }
+  const stops = [];
+  for (const r of runs){
+    let got = runStops(r, r.n, r.front);
+    if (!got.length){                            // guessed the wrong side (no doors to tell): try the other
+      const other = r.n.clone().negate(), ax2 = r.ax === 'z' ? 'x' : 'z';
+      const far = r.items.reduce((m, it) => other[ax2] > 0 ? Math.max(m, it.c.box.max[ax2]) : Math.min(m, it.c.box.min[ax2]), other[ax2] > 0 ? -Infinity : Infinity);
+      got = runStops(r, other, far);
+    }
+    stops.push(...got);
+  }
+  // two stops seeing much the same thing (a corner where two runs meet): keep one
+  for (let i = stops.length - 1; i >= 0; i--)
+    if (stops.some((t, k) => k < i && t.eye.distanceTo(stops[i].eye) < 700 && t.look.distanceTo(stops[i].look) < 900)) stops.splice(i, 1);
+  // go round the room: by angle around its middle, starting with the stop nearest the walk-in point
+  const mid = roomBox.getCenter(new THREE.Vector3()), ang = s => Math.atan2(s.eye.z - mid.z, s.eye.x - mid.x);
+  stops.sort((s, t) => ang(s) - ang(t));
+  const start = walkStart().eye, k0 = stops.reduce((bi, s, i) => s.eye.distanceTo(start) < stops[bi].eye.distanceTo(start) ? i : bi, 0);
+  return stops.slice(k0).concat(stops.slice(0, k0));
+}
+// what a spot can see: a cabinet counts when you're on its front side and nothing is between you (a cellar's
+// racks seen from outside its walls, or the backs of an island, don't count)
+const allMeshes = parts.concat(hardware.filter(h => h.p.k !== 'room')).flatMap(o => o.meshes);
+const ownerOf = new Map(); for (const c of cabGroups) for (const x of c.cab) for (const m of x.meshes) ownerOf.set(m, c);
+function seen(eye, list){
+  let w = 0;
+  for (const c of list){
+    const ctr = c.box.getCenter(new THREE.Vector3()); ctr.y = Math.min(Math.max(ctr.y, floorY + 600), floorY + 1500);
+    if (eye.clone().sub(ctr).setY(0).dot(c.n) <= 0) continue;               // behind it
+    const d = ctr.clone().sub(eye), len = d.length();
+    sight.set(eye, d.normalize()); sight.far = len + 400;
+    const hit = sight.intersectObjects(allMeshes)[0];
+    if (hit && ownerOf.get(hit.object) === c) w += c.size;
+  }
+  return w;
+}
+// the walk-in point: open floor that sees the most joinery front-on, not too close, not too far
+function walkStart(){
+  const j = boxOf(parts), jc = j.getCenter(new THREE.Vector3());
+  const list = cabGroups.filter(c => c.kind !== 'toe' && c.kind !== 'panel').map(c => Object.assign(c, {n: facing(c),
+    size: Math.max(c.box.max.x - c.box.min.x, c.box.max.z - c.box.min.z)})).sort((a, b) => b.size - a.size).slice(0, 16);
+  const total = list.reduce((t, c) => t + c.size, 0) || 1;
+  const want = Math.min(Math.max(Math.max(j.max.x - j.min.x, j.max.z - j.min.z) * 0.55, 1800), 4200);
+  let best = null;
+  const N = 12;
+  for (let ix = 0; ix <= N; ix++) for (let iz = 0; iz <= N; iz++){
+    const p = new THREE.Vector3(roomBox.min.x + (roomBox.max.x - roomBox.min.x) * ix / N, 0, roomBox.min.z + (roomBox.max.z - roomBox.min.z) * iz / N);
+    const f = freeSpot(p); if (f.distanceTo(p.setY(f.y)) > 5) continue;      // only spots that are already free
+    const d = f.clone().sub(jc).setY(0).length();
+    const score = 4000 * seen(f, list) / total - 0.4 * Math.abs(d - want);
+    if (!best || score > best.score) best = {score, eye: f};
+  }
+  // look at the middle of what's seen from there (else the joinery's middle)
+  const eye = best ? best.eye : freeSpot(jc.clone().add(new THREE.Vector3(0, 0, want)));
+  // face the joinery it sees: the size-weighted average direction to those cabinets
+  const dir = new THREE.Vector3();
+  for (const c of list.filter(c => seen(eye, [c]) > 0)) dir.addScaledVector(c.box.getCenter(new THREE.Vector3()).sub(eye).setY(0).normalize(), c.size);
+  if (dir.length() < 1e-3) dir.copy(jc).sub(eye).setY(0);
+  if (dir.length() < 1e-3) dir.set(0, 0, -1);
+  const at = eye.clone().addScaledVector(dir.normalize(), 1500); at.y = floorY + 1250;
+  return {eye, look: at};
+}
+
+let walking = false, tour = null, glide = null;
+const ORBIT = {rotateSpeed: controls.rotateSpeed, enableZoom: true, enablePan: true, fov: camera.fov};
+function lookFrom(eye, look){                   // put the eye somewhere, looking at a point
+  const dir = look.clone().sub(eye).normalize();
+  camera.position.copy(eye); controls.target.copy(eye).addScaledVector(dir, LOOK_R);
+  controls.update();
+}
+// walking lens: at least ~70 degrees across, so a portrait phone sees as much width as a desktop
+function walkFov(){ return Math.min(95, Math.max(62, 2 * Math.atan(Math.tan(35 * Math.PI / 180) / camera.aspect) * 180 / Math.PI)); }
+function setWalking(on){
+  walking = on;
+  $('vWalk').setAttribute('aria-pressed', on); $('vWalk').textContent = on ? 'Exit walk' : 'Walk';
+  for (const id of ['vMulti', 'vSolid']) $(id).hidden = on;
+  controls.rotateSpeed = on ? -0.35 : ORBIT.rotateSpeed;     // drag turns your head (not the room)
+  controls.enableZoom = !on; controls.enablePan = !on;
+  controls.minPolarAngle = on ? 0.25 * Math.PI : 0; controls.maxPolarAngle = on ? 0.78 * Math.PI : Math.PI;
+  camera.fov = on ? walkFov() : ORBIT.fov; camera.near = on ? 10 : camera.near; camera.far = on ? 60000 : camera.far; camera.updateProjectionMatrix();
+  hintText();
+}
+function enterWalk(at){
+  if (iso !== null){ for (const mv of movers) mv.target = 0; isolate(null); }
+  if (picking) setPicking(false);
+  showCab(null); openSheet(false);
+  setWalking(true);
+  const s = at || walkStart();
+  glideTo(s.eye, s.look, camera.position.distanceTo(s.eye) > 50 ? 1.2 : 0);
+}
+function exitWalk(refit){
+  stopTour(); glide = null;
+  setWalking(false);
+  if (refit !== false) reframe();
+}
+// glide the eye (and where it looks) to a new spot; `secs` 0 = jump
+function glideTo(eye, look, secs, done){
+  const from = {eye: camera.position.clone(), look: camera.position.clone().add(controls.target.clone().sub(camera.position).normalize().multiplyScalar(1000))};
+  if (!secs || still){ lookFrom(eye, look); if (done) done(); return; }
+  glide = {t0: performance.now(), secs, from, to: {eye: eye.clone(), look: look.clone()}, done};
+}
+function glideStep(){
+  if (!glide) return;
+  const k = Math.min(1, (performance.now() - glide.t0) / 1000 / glide.secs), e = k * k * (3 - 2 * k);
+  const eye = glide.from.eye.clone().lerp(glide.to.eye, e);
+  // turn toward the new view along the way (directions, so a turn never swings through the walls)
+  const d0 = glide.from.look.clone().sub(glide.from.eye).normalize(), d1 = glide.to.look.clone().sub(glide.to.eye).normalize();
+  const dir = d0.clone().lerp(d1, e); if (dir.length() < 1e-3) dir.copy(d1); dir.normalize();
+  lookFrom(eye, eye.clone().add(dir));
+  if (k >= 1){ const done = glide.done; glide = null; if (done) done(); }
+}
+// tap while walking: a door or drawer opens; anywhere else, walk there (stopping short of walls and joinery)
+function walkTap(e, x){
+  if (x && x.mover && !x.mover.m.fixed){ toggleMover(x.mover); return; }
+  stopTour();
+  const r = renderer.domElement.getBoundingClientRect();
+  ray.setFromCamera({x:(e.clientX - r.left) / r.width * 2 - 1, y:-(e.clientY - r.top) / r.height * 2 + 1}, camera);
+  const hit = ray.intersectObjects(parts.concat(hardware).flatMap(o => o.meshes.filter(m => m.visible && m.material.opacity > .3)))[0];
+  let to = null;
+  if (hit && hit.face && Math.abs(hit.point.y - floorY) < 150 && hit.face.normal.y > 0.5) to = hit.point.clone();
+  else if (hit){ const back = hit.point.clone().sub(camera.position).setY(0); const d = back.length(); to = camera.position.clone().addScaledVector(back.normalize(), Math.max(0, d - 800)); }
+  else {                                          // the floor where nothing is drawn
+    const t = (floorY - ray.ray.origin.y) / ray.ray.direction.y;
+    if (t > 0 && t < 12000) to = ray.ray.origin.clone().addScaledVector(ray.ray.direction, t);
+  }
+  if (!to) return;
+  const eye = freeSpot(to), dir = controls.target.clone().sub(camera.position).setY(0).normalize();
+  const look = eye.clone().addScaledVector(dir.length() ? dir : new THREE.Vector3(0, 0, -1), 1000);
+  look.y = camera.position.y + (controls.target.y - camera.position.y) / LOOK_R * 1000;
+  glideTo(eye, look, Math.min(Math.max(eye.distanceTo(camera.position) / STEP_SPEED, 0.4), 3));
+}
+// the mouse wheel walks forward / back
+renderer.domElement.addEventListener('wheel', e => {
+  if (!walking) return;
+  e.preventDefault(); stopTour();
+  const dir = controls.target.clone().sub(camera.position).setY(0).normalize();
+  const eye = freeSpot(camera.position.clone().addScaledVector(dir, e.deltaY < 0 ? 350 : -350));
+  const look = eye.clone().add(controls.target.clone().sub(camera.position).multiplyScalar(1000 / LOOK_R));
+  glideTo(eye, look, 0.25);
+}, {passive: false});
+
+// the tour: Play walks stop to stop (pausing at each), Prev / Next step, dragging to look around pauses it
+const HOLD = 2.6;                                // seconds at each stop
+function startTour(){
+  const stops = tourStops();
+  if (!stops.length){ $('hint').textContent = 'No joinery to tour in this room'; return; }
+  if (!walking) enterWalk(stops[0]);
+  tour = {stops, i: 0, playing: true, timer: null};
+  $('tourbar').hidden = false; $('card').hidden = true; $('hint').hidden = true;
+  goStop(0);
+}
+function goStop(i){
+  if (!tour) return;
+  clearTimeout(tour.timer);
+  tour.i = (i + tour.stops.length) % tour.stops.length;
+  const s = tour.stops[tour.i];
+  $('tPos').textContent = (tour.i + 1) + ' / ' + tour.stops.length;
+  $('tPlay').textContent = tour.playing ? 'Pause' : 'Play';
+  glideTo(s.eye, s.look, Math.min(Math.max(s.eye.distanceTo(camera.position) / 1100, 1.2), 3.5), () => {
+    if (tour && tour.playing){
+      if (tour.i === tour.stops.length - 1){ tour.playing = false; $('tPlay').textContent = 'Play'; $('tPos').textContent = 'End · ' + tour.stops.length + ' stops'; }
+      else tour.timer = setTimeout(() => goStop(tour.i + 1), HOLD * 1000);
+    }
+  });
+}
+function stopTour(){
+  if (!tour) return;
+  clearTimeout(tour.timer); tour = null; glide = null;
+  $('tourbar').hidden = true; $('hint').hidden = false; updateCard();
+}
+function pauseTour(){ if (tour && tour.playing){ tour.playing = false; clearTimeout(tour.timer); glide = null; $('tPlay').textContent = 'Play'; } }
+$('vWalk').onclick = () => walking ? exitWalk() : enterWalk();
+$('vTour').onclick = () => tour ? stopTour() : startTour();
+$('tPrev').onclick = () => { if (tour){ tour.playing = false; goStop(tour.i - 1); } };
+$('tNext').onclick = () => { if (tour){ tour.playing = false; goStop(tour.i + 1); } };
+$('tPlay').onclick = () => { if (!tour) return; tour.playing = !tour.playing;
+  if (tour.playing) goStop(tour.i === tour.stops.length - 1 && $('tPos').textContent.startsWith('End') ? 0 : tour.i); else pauseTour(); };
+$('tExit').onclick = () => stopTour();
+controls.addEventListener('start', () => { glide = null; pauseTour(); });
 
 // ---- comments: press Comment, tap the spot, write a note. Notes stay on this device (all rooms of the job)
 // until sent: "Send by email" writes them into an email to us, each with a link that opens this exact view ----
@@ -1309,12 +1599,13 @@ function openView(){
   camera.position.set(v[3], v[4], v[5]); controls.target.set(v[6], v[7], v[8]);
   const d = camera.position.distanceTo(controls.target);
   camera.near = Math.max(20, d / 200); camera.far = d * 20 + 20000; camera.updateProjectionMatrix(); controls.update();
+  if (d < 300) setWalking(true);                // it was taken walking: carry on walking from there
 }
 
 resize(); hintText(); show(null); drawPins(); openView();
 (function loop(t){
   if (sel) for (const m of sel.meshes) m.material.emissiveIntensity = still ? .35 : .2 + .25 * (1 + Math.sin((t || 0) / 300)) / 2;
-  moveStep(); controls.update(); wallStep(); renderer.render(scene, camera); requestAnimationFrame(loop);
+  glideStep(); moveStep(); controls.update(); wallStep(); renderer.render(scene, camera); requestAnimationFrame(loop);
 })();
 }
 </script>
